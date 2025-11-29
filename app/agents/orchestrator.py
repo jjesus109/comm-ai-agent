@@ -10,6 +10,8 @@ from langgraph.graph import END
 from app.config import Configuration
 from app.agents.models import MainOrchestratorState
 from app.depends import db_conn
+from app.agents.offer_value import offer_value_graph
+from app.agents.car_catalog import car_catalog_graph
 
 
 memory = SqliteSaver(db_conn)
@@ -181,7 +183,8 @@ def decide_by_model(message: str) -> str:
 
 def entry_point(state: MainOrchestratorState) -> dict:
     state["current_action"] = "analyzing"
-    message = state["messages"][0].content
+    # Analyze the last message
+    message = state["messages"][-1].content
     return {"message_to_analyze": message}
 
 
@@ -190,8 +193,8 @@ workflow = StateGraph(MainOrchestratorState)
 workflow.add_node(entry_point)
 workflow.add_node(manage_unsecure)
 workflow.add_node(financial_plan)
-workflow.add_node(offer_value)
-workflow.add_node(car_catalog)
+workflow.add_node("offer_value", offer_value_graph.compile(checkpointer=memory))
+workflow.add_node("car_catalog", car_catalog_graph.compile(checkpointer=memory))
 workflow.add_node(continue_operation)
 
 

@@ -38,7 +38,7 @@ async def send_messages(message: MessageModel) -> ResponseModel:
     config = {"configurable": {"thread_id": conversation_id}}
     input_message = HumanMessage(content=message.message)
     responses = orchestrator_graph.invoke({"messages": [input_message]}, config)
-    final_response = responses["messages"]
+    final_response = responses["response"]
     print(f"final_response: {final_response}")
     return ResponseModel(
         response=final_response.__str__(), conversation_id=conversation_id
