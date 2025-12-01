@@ -9,12 +9,13 @@ from langgraph.graph import END
 
 from app.config import Configuration
 from app.agents.models import MainOrchestratorState
-from app.depends import db_conn
+from app.depends import agents_db_conn
 from app.agents.offer_value import offer_value_graph
 from app.agents.car_catalog import car_catalog_graph
+from app.agents.financial_plan import financial_plan_graph
 
 
-memory = SqliteSaver(db_conn)
+memory = SqliteSaver(agents_db_conn)
 log = logging.getLogger(__name__)
 conf = Configuration()
 
@@ -26,28 +27,13 @@ INTENTION_PROMPT = """Encuentra la decision que un usuario desea realizar basada
     1. El usuario busca conocer alguna respuesta relacionada con la empresa, saber que hace, donde se origino, como funciona, todo acerca de la propuesta de valor, responde "offer_value".
     2. El usuario desea conocer cualquier tema relacionado algun vehiculo como marca, modelo, año, detalles del mismo, response "car_catalog".
     3. El usuario planea comprar un vehiculo o desea conocer informacion sobre como comprarlo. Ya conoce que vehiculo desea comprar o busca uno para comprar de forma inmediata. Response "financial_plan".
-* solo response con una de las tres posibles opciones posibles: "offer_value", "car_catalog", "financial_plan"
+* Solo response con una de las tres posibles opciones posibles: "offer_value", "car_catalog", "financial_plan"
 * Piensa antes de responder
 """
 
 orchestrator_agent = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite", temperature=conf.temperature
 )
-
-
-def financial_plan(state: MainOrchestratorState) -> dict:
-    print(f"FINANCIAL PLAN state: {state}")
-    return {"current_action": "financial_plan"}
-
-
-def offer_value(state: MainOrchestratorState) -> dict:
-    print(f"offer_value state: {state}")
-    return {"current_action": "offer_value"}
-
-
-def car_catalog(state: MainOrchestratorState) -> dict:
-    print(f"car_catalog, state: {state}")
-    return {"current_action": "car_catalog"}
 
 
 def intention_finder(state: MainOrchestratorState) -> SUB_AGENTS:
@@ -58,14 +44,11 @@ def intention_finder(state: MainOrchestratorState) -> SUB_AGENTS:
 
 def verify_malicious_content(state: MainOrchestratorState) -> str:
     """
-    Decide the policy action for a given message.
-
+    Decide the policy action for a given message to identify which node to apply
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
     Returns:
-        str: One of the following actions:
-            - "allow": The request is good and will pass.
-            - "deny": The request is not allowed.
-            - "warn": Warn about the response by the user or LLM.
-            - "obfuscate": Obfuscate PII data.
+        str: The node to apply to the message.
     """
     content = state["message_to_analyze"]
     response = programed_find(content)
@@ -80,6 +63,16 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
 
 
 def programed_find(content):
+    """
+    Finds malicious content in a given message.
+    Args:
+        content (str): The message to find malicious content in.
+    Returns:
+        str: One of the following actions:
+            - "allow": The request is good and will pass.
+            - "deny": The request is not allowed.
+            - "warn": Warn about the response by the user or LLM.
+    """
     # 1. Direct Injection
     # 1.1. Prompt Injection/Jailbreak detection
     prompt_injection_patterns = [
@@ -150,11 +143,14 @@ def programed_find(content):
 
 
 def continue_operation(state: MainOrchestratorState) -> dict:
-    return {"secure_input": True}
+    return {"secure_input": True, "current_action": "continue_operation"}
 
 
 def manage_unsecure(state: MainOrchestratorState) -> dict:
-    return {"messages": ["Regresemos a nuestro tema principal"]}
+    return {
+        "messages": ["Regresemos a nuestro tema principal"],
+        "current_action": "manage_unsecure",
+    }
 
 
 def decide_by_model(message: str) -> str:
@@ -182,17 +178,16 @@ def decide_by_model(message: str) -> str:
 
 
 def entry_point(state: MainOrchestratorState) -> dict:
-    state["current_action"] = "analyzing"
     # Analyze the last message
     message = state["messages"][-1].content
-    return {"message_to_analyze": message}
+    return {"message_to_analyze": message, "current_action": "orchestrator"}
 
 
 # Define a new graph
 workflow = StateGraph(MainOrchestratorState)
 workflow.add_node(entry_point)
 workflow.add_node(manage_unsecure)
-workflow.add_node(financial_plan)
+workflow.add_node("financial_plan", financial_plan_graph.compile(checkpointer=memory))
 workflow.add_node("offer_value", offer_value_graph.compile(checkpointer=memory))
 workflow.add_node("car_catalog", car_catalog_graph.compile(checkpointer=memory))
 workflow.add_node(continue_operation)

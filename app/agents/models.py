@@ -1,6 +1,30 @@
 from operator import add
-from typing import Annotated, TypedDict
+from typing_extensions import Annotated, Optional, TypedDict
 from typing import List
+
+
+class SelectedCar(TypedDict):
+    brand: str
+    model: str
+    year: int
+    price: float
+    stock_id: str
+
+
+class UserNeeds(TypedDict):
+    marca: Optional[str]
+    kilometraje: Optional[int]
+    precio_minimo: Optional[float]
+    precio_maximo: Optional[float]
+    modelo: Optional[str]
+    year_minimo: Optional[int]
+    year_maximo: Optional[int]
+    version: Optional[str]
+    bluetooth: Optional[bool]
+    largo: Optional[float]
+    ancho: Optional[float]
+    alto: Optional[float]
+    car_play: Optional[bool]
 
 
 class MainOrchestratorState(TypedDict):
@@ -11,12 +35,13 @@ class MainOrchestratorState(TypedDict):
     secure_output: bool
     message_to_analyze: str
     response: str
-    user_needs: Annotated[List[str], add]
-
-
-class CarCatalogState(TypedDict):
-    message_to_analyze: str
-    current_action: str
-    user_needs: Annotated[List[str], add]
-    car_findings: List[str]
-    response: str
+    selected_car: SelectedCar
+    price: float
+    user_needs: UserNeeds
+    query: str
+    errors: str
+    car_findings: List[dict]
+    years: int
+    down_payment: float
+    monthly_payment: float
+    user_response: str

@@ -41,9 +41,8 @@ def search_data(state: MainOrchestratorState) -> dict:
     return {"response": response.content}
 
 
-def entry_point(state: MainOrchestratorState) -> MainOrchestratorState:
-    state["current_action"] = "offer_value"
-    return state
+def entry_point(state: MainOrchestratorState) -> dict:
+    return {"current_action": "offer_value"}
 
 
 # Define a new graph
