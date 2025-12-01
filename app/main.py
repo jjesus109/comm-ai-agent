@@ -1,16 +1,21 @@
 import logging
 from uuid import uuid4
 
-import fastapi
-from langchain_core.messages import HumanMessage
+from fastapi import Form, FastAPI
 import uvicorn
-
+from twilio.rest import Client
+from langchain_core.messages import HumanMessage
 
 from app.models import MessageModel, ResponseModel
-
 from app.utils import configure_logger
 from app.config import Configuration
 from app.agents.orchestrator import orchestrator_graph
+
+
+conf = Configuration()
+account_sid = conf.twilio_account_sid
+auth_token = conf.twilio_auth_token
+client = Client(account_sid, auth_token)
 
 
 responses = {
@@ -22,11 +27,27 @@ responses = {
 
 
 log = logging.getLogger(__name__)
-app = fastapi.FastAPI(
+app = FastAPI(
     description="Commercial AI Agent",
     version="0.0.1",
     openapi_url="/api/openapi.json",
 )
+
+
+def send_message(body_text):
+    client.messages.create(
+        from_=f"whatsapp:+{conf.twilio_phone_number}",
+        body=body_text,
+        to=f"whatsapp:+{conf.twilio_phone_number_to}",
+    )
+
+
+@app.post("/message")
+async def reply(body_text: str = Form()):
+    print(f"body_text: {body_text}")
+    message = "hi, from api"
+    response = send_message(message)
+    return response
 
 
 @app.post("/api/chat/", response_model=ResponseModel, responses=responses)
@@ -46,7 +67,6 @@ async def send_messages(message: MessageModel) -> ResponseModel:
 
 
 if __name__ == "__main__":
-    conf = Configuration()
     configure_logger()
     config = uvicorn.Config(app="app.main:app", port=conf.port, host=conf.host)
     server = uvicorn.Server(config)
