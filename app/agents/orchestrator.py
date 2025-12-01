@@ -222,12 +222,14 @@ def summarize_conversation(state: MainOrchestratorState):
     if summary:
         summary_message = (
             f"Este es el resumen de la conversacion hasta el momento: {summary}\n\n"
-            "Extiende el resumen tomando en cuenta los nuevos mensajes anteriores:"
+            "Extiende el resumen tomando en cuenta los nuevos mensajes anteriores, crea un solo parrafo:"
         )
 
     else:
         # If no summary exists, just create a new one
-        summary_message = "Crear un resumen de la conversacion anterior:"
+        summary_message = (
+            "Crear un resumen de la conversacion anterior en un solo parrafo:"
+        )
 
     # Add prompt to our history
     messages = state["messages"] + [HumanMessage(content=summary_message)]

@@ -40,7 +40,7 @@ car_catalog_llm = ChatGoogleGenerativeAI(
 def select_car(state: MainOrchestratorState) -> dict:
     if not state.get("car_findings"):
         return {
-            "user_response": "No hemos buscado un auto todavia, por favor, defina algunas caracteristicas del auto que desea buscar y seleccione uno para poderlo ayudar",
+            "user_response": "No hemos buscado un auto todavia, por favor, dime alguna caracteristica del auto que deseas buscar.",
             "current_action": "select_car",
         }
     car_findings = state["car_findings"]
@@ -248,6 +248,11 @@ def search_cars(state: MainOrchestratorState) -> dict:
 
 
 def organize_response(state: MainOrchestratorState) -> dict:
+    if not state.get("car_findings"):
+        return {
+            "error": "No cars found",
+            "user_response": "Primero, empezemos con definir algunas caracteristicas del auto que deseas buscar",
+        }
     car_findings = state["car_findings"]
     SYSTEM_PROMPT = """
     Eres un vendedor experto en autos, crea una resumen muy llamativo y atractivo para el usuario, que incluya los autos encontrados y el match de las necesidades del usuario con los autos encontrados.
@@ -269,11 +274,15 @@ def organize_response(state: MainOrchestratorState) -> dict:
     ]
     response = car_catalog_llm.invoke(messages)
     log.debug(f"Este es el resumen de los autos encontrados: {response.content}")
-    return {"response": response.content, "messages": [response]}
+    return {"user_response": response.content, "messages": [response]}
 
 
 def clear_car_context(state: MainOrchestratorState) -> dict:
-    return {"user_needs": {}, "current_action": "clear_car_context"}
+    return {
+        "user_needs": {},
+        "current_action": "clear_car_context",
+        "user_response": "Perfecto, ¡Iniciaremos una nueva busqueda de tu auto ideal!",
+    }
 
 
 def router_node(state: MainOrchestratorState) -> SUB_NODES:
@@ -281,7 +290,6 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     # To avoid infinite loop, if the current action is a sub node, return END
     if current_action in NODE_NAMES:
         return END
-    user_input = state["message_to_analyze"]
     INTENTION_PROMPT = """## 🤖 Tarea: Clasificador de Intención de Búsqueda de Vehículos
     Eres un clasificador de intención experto y tu única función es determinar el **objetivo principal** del último mensaje del usuario en un contexto de búsqueda de vehículos.
 
@@ -301,7 +309,7 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     | Acción | Definición y Lógica | Ejemplos de Entrada |
     | :--- | :--- | :--- |
     | **"select_car"** | El usuario ha **elegido un vehículo específico** (por marca, modelo y/o año) con la intención de **obtener detalles adicionales, iniciar cotización/financiamiento, o reservarlo**. | "Me gusta la Chevrolet Cheyenne 2019", "Quiero el Toyota 2018", "Me interesa el audio a3 2010", "Dame más detalles de ese Mercedes Benz c200 2021". |
-    | **"context_car_identification"** | El usuario está **definiendo, agregando o modificando criterios de búsqueda** (filtros, rangos, características). El sistema debe actualizar el contexto de búsqueda con esta información (incluso si la lista de características actual está vacía). | "Quiero un auto de la marca Toyota", "Debe ser modelo Corolla, año 2024", "Que tenga bluetooth y CarPlay", "Busco un sedan más barato que 200,000 pesos". |
+    | **"context_car_identification"** | El usuario está **definiendo, agregando o modificando criterios de búsqueda** (filtros, rangos, características). El sistema debe actualizar el contexto de búsqueda con esta información (incluso si la lista de características actual está vacía). | "Quiero un auto de la marca Toyota","Un mercedez","una rav4" , "un mustang","Debe ser modelo Corolla, año 2024", "Que tenga bluetooth y CarPlay", "Busco un sedan más barato que 200,000 pesos". |
     | **"text_to_sql"** | El usuario solicita **ejecutar la búsqueda actual** (basada en el contexto existente) y **ver los resultados** encontrados por el sistema. | "Quiero ver los resultados de la busqueda de vehiculos", "Muestra que autos encontraste", "¿Qué opciones tienes?", "A ver que autos encontraste", "Que vehiculos tienes con esas caracteristicas". |
     | **"clear_car_context"** | El usuario pide **borrar** la búsqueda actual y **comenzar de cero** con un nuevo set de filtros. | "Quiero buscar un nuevo vehiculo", "Probemos con otras caracteristicas", "Borra mi búsqueda actual", "Empecemos de nuevo". |
 
@@ -311,10 +319,7 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     system_message = f"""Este es el resumen de la conversacion hasta el momento: {state.get("summary", "")} \n\n
         {INTENTION_PROMPT.format(car_characteristics=state.get("user_needs"))}
     """
-    messages = [
-        SystemMessage(content=system_message),
-        HumanMessage(content=f"Este es el mensaje del usuario: {user_input}"),
-    ]
+    messages = [SystemMessage(content=system_message)] + state["messages"]
     response = car_catalog_llm.invoke(messages)
     selected_action = response.content
     log.debug(f"Este es la accion seleccionada: {selected_action}")
@@ -328,16 +333,7 @@ def orchestrator_node(state: MainOrchestratorState) -> dict:
     According to the user input, it will call the appropriate node to continue the flow.
     And returns the proper message to the user based on the user input.
     """
-    response = ""
-    if state["current_action"] == "context_car_identification":
-        response = state["user_response"]
-    elif state["current_action"] == "text_to_sql":
-        response = state["response"]
-    elif state["current_action"] == "select_car":
-        response = state["user_response"]
-    elif state["current_action"] == "clear_car_context":
-        response = "Perfecto, ¡Iniciaremos una nueva busqueda de tu auto ideal!"
-
+    response = state.get("user_response", "")
     return {"response": response}
 
 
