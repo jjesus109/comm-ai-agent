@@ -135,7 +135,11 @@ def organize_response(state: MainOrchestratorState) -> dict:
         HumanMessage(content=USER_PROMPT),
     ]
     response = financial_plan_agent.invoke(messages)
-    return {"response": response.content, "current_action": "organize_response"}
+    return {
+        "response": response.content,
+        "current_action": "organize_response",
+        "messages": [response],
+    }
 
 
 def decision_node(state: MainOrchestratorState) -> str:

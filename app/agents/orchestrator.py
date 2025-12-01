@@ -7,7 +7,6 @@ from langgraph.graph import StateGraph, START
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END
-
 from app.config import Configuration
 from app.agents.models import MainOrchestratorState
 from app.depends import agents_db_conn
@@ -25,7 +24,7 @@ SUB_AGENTS = Literal["offer_value", "car_catalog", "financial_plan"]
 INTENTION_PROMPT = """Eres un **Motor de Enrutamiento (Router)** para un agente de IA. Tu única tarea es analizar la intención del usuario y seleccionar **exactamente uno** de los flujos de trabajo predefinidos.
 
 ### 🎯 Tarea y Requisito Obligatorio:
-Selecciona una, y solo una, de las siguientes claves. **Tu respuesta debe ser únicamente la clave seleccionada, sin ningún otro texto o explicación.**
+Selecciona una, y solo una, de las siguientes claves. **Tu respuesta debe ser únicamente la clave seleccionada, sin ningún otro texto o explicación. Considera el resumen de la conversacion anterior para tomar una decision mas acertada.**
 
 ### 🗺️ Flujos Posibles (Opciones):
 
@@ -208,30 +207,36 @@ def decide_by_model(message: str) -> str:
 def entry_point(state: MainOrchestratorState) -> dict:
     # Analyze the last message
     message = state["messages"][-1].content
+    log.debug(f"message: {state['messages']}")
+    log.debug(f"summary: {state.get('summary', '')}")
     return {"message_to_analyze": message, "current_action": "orchestrator"}
 
 
 def summarize_conversation(state: MainOrchestratorState):
     summary = state.get("summary", "")
     messages = state["messages"]
-    if len(messages) < RATE_SUMMARIZE_MESSAGES:
+    if len(messages) < RATE_SUMMARIZE_MESSAGES and not summary:
         return {"summary": ""}
     if summary:
         summary_message = (
-            f"This is summary of the conversation to date: {summary}\n\n"
-            "Extend the summary by taking into account the new messages above:"
+            f"Este es el resumen de la conversacion hasta el momento: {summary}\n\n"
+            "Extiende el resumen tomando en cuenta los nuevos mensajes anteriores:"
         )
 
     else:
         # If no summary exists, just create a new one
-        summary_message = "Create a summary of the conversation above:"
+        summary_message = "Crear un resumen de la conversacion anterior:"
 
     # Add prompt to our history
     messages = state["messages"] + [HumanMessage(content=summary_message)]
     response = orchestrator_agent.invoke(messages)
 
     # Delete all but the 2 most recent messages and add our summary to the state
-    delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
+    messages_to_summarize = state["messages"][:-2]
+    delete_messages = []
+    for m in messages_to_summarize:
+        if m.id:
+            delete_messages.append(RemoveMessage(id=m.id))
     return {"summary": response.content, "messages": delete_messages}
 
 

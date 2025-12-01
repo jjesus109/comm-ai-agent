@@ -38,7 +38,7 @@ def search_data(state: MainOrchestratorState) -> dict:
         HumanMessage(content=USER_PROMPT),
     ]
     response = offer_value_agent.invoke(messages)
-    return {"response": response.content}
+    return {"response": response.content, messages: [response]}
 
 
 def entry_point(state: MainOrchestratorState) -> dict:

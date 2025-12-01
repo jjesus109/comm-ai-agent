@@ -1,6 +1,7 @@
-from operator import add
 from typing_extensions import Annotated, Optional, TypedDict
 from typing import List
+
+from langgraph.graph.message import add_messages
 
 
 class SelectedCar(TypedDict):
@@ -28,7 +29,7 @@ class UserNeeds(TypedDict):
 
 
 class MainOrchestratorState(TypedDict):
-    messages: Annotated[list, add]
+    messages: Annotated[list, add_messages]
     summary: str
     current_action: str
     secure_input: bool

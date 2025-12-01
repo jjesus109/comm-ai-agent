@@ -158,6 +158,7 @@ def context_car_identification(state: MainOrchestratorState) -> dict:
         "user_needs": updated_user_needs,
         "current_action": "context_car_identification",
         "user_response": user_needs.get("user_response"),
+        "messages": [response],
     }
 
 
@@ -172,17 +173,47 @@ def text_to_sql(state: MainOrchestratorState) -> dict:
         }
     user_needs = state["user_needs"]
     SYSTEM_PROMPT = """
-    Eres un experto en SQL, crea una consulta en SQL para buscar los autos que se ajustan a las necesidades del usuario.
-    El output esperado es una consulta en SQL.
-    No inventes ninguna informacion.
-    No respondas preguntas que no sean relacionadas con la consulta en SQL.
-    Planifica y luego responde a la pregunta.
-    Tienes una tabla llamada "cars" con las siguientes columnas:
-    stock_id,km,price,make,model,year,version,bluetooth,largo,ancho,altura,car_play
-    Ejemplo de output:
-    "SELECT km,price,make,model,year,version,bluetooth,largo,ancho,altura,car_play
-    FROM car_catalog WHERE brand = 'Toyota' AND model = 'Corolla' AND year = 2024"
+    Eres un experto en **Generación de Consultas SQL (SQL Generator)**. Tu única tarea es crear una consulta SQL estándar (SQL ANSI, compatible con PostgreSQL/MySQL) para buscar vehículos.
+
+    ### 🎯 Tarea y Requisitos:
+
+    1.  **Genera una consulta SELECT** que devuelva todas las columnas del catálogo de autos.
+    2.  **Aplica filtros** (`WHERE`) basándote en las necesidades de búsqueda proporcionadas por el usuario.
+    3.  **OBLIGATORIO: Implementa Búsqueda *Case-Insensitive***. Para todas las columnas de texto (`make`, `model`, `version`), debes utilizar la función `LOWER()` sobre la columna de la tabla y comparar contra el valor de búsqueda convertido a minúsculas (`LOWER('Valor de Búsqueda')`). Esto asegura que la búsqueda no dependa de si el usuario escribió con mayúsculas o minúsculas.
+    4.  **Columnas `bluetooth` y `car_play`**: Estas columnas son de tipo **STRING** en la base de datos. Cuando el usuario requiera estas características (cuando `bluetooth` o `car_play` sean `True` en las necesidades del usuario), debes filtrar buscando vehículos donde el valor de la columna sea igual a `'Si'` (string) o `NULL`. Utiliza la condición: `(bluetooth = 'Si' OR bluetooth IS NULL)` para bluetooth y `(car_play = 'Si' OR car_play IS NULL)` para car_play.
+    5.  **No inventes información.** Solo usa los campos y valores proporcionados.
+
+    ### 📋 Estructura de la Base de Datos:
+
+    * **Tabla:** `cars`
+    * **Columnas:** 
+    - `stock_id` (string)
+    - `km` (numérico)
+    - `price` (numérico)
+    - `make` (string)
+    - `model` (string)
+    - `year` (numérico)
+    - `version` (string)
+    - `bluetooth` (string) - Valores posibles: `'Si'` o `NULL`
+    - `largo` (numérico)
+    - `ancho` (numérico)
+    - `altura` (numérico)
+    - `car_play` (string) - Valores posibles: `'Si'` o `NULL`
+
+    ### 📝 Formato de Salida Requerido:
+
+    Tu respuesta **debe ser únicamente la consulta SQL completa**, sin texto introductorio, explicaciones o código adicional.
+
+    **Ejemplo de Búsqueda *Case-Insensitive* para Marca y Modelo (asume que el usuario busca 'Toyota' y 'Corolla'):**
+    SELECT stock_id, km, price, make, model, year, version, bluetooth, largo, ancho, altura, car_play
+    FROM cars
+    WHERE LOWER(make) = LOWER('Toyota') AND LOWER(model) = LOWER('Corolla');**Ejemplo de Búsqueda con Bluetooth y CarPlay (asume que el usuario requiere bluetooth y car_play):**
+    SELECT stock_id, km, price, make, model, year, version, bluetooth, largo, ancho, altura, car_play
+    FROM cars
+    WHERE (bluetooth = 'Si' OR bluetooth IS NULL) AND (car_play = 'Si' OR car_play IS NULL);
+
     """
+
     USER_PROMPT = f"Crea una consulta en pandas para buscar los autos que se ajustan a las necesidades del usuario: {user_needs}"
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
@@ -219,15 +250,22 @@ def organize_response(state: MainOrchestratorState) -> dict:
     basado en los hallazagos encontrados por tu asistente de busqueda, recuerda, debes crear un mensaje muy atractivo y llamativo para el usuario, que incluya los autos encontrados y el match de las necesidades del usuario con los autos encontrados.
     Recuerda incluir los datos de los autos encontrados, como marca, modelo, año, precio, kilometraje, etc, y toda la infomracion relevante de los autos a ofrecer al cliente.
     Limita la respuesta a 3 autos encontrados.
+    En caso de que no haya autos encontrados, responde con un mensaje de que no se encontraron autos que se ajusten a las necesidades del usuario.
+    Recuerda que debes mostrar al usuario las caracteristicas que definio de una manera amigable y clara.
+    Estas son las caracteristicas que busco el usuario: {user_needs}
+    Ejemplo de output:
+    "Estos son los autos encontrados: 'Lista de autos encontrados'"
+    "No se encontraron autos que se ajusten a tus necesidades, prueba modificando las caracteristicas del auto que deseas buscar"
+    
     """
     USER_PROMPT = f"Estos son los autos encontrados: {car_findings}"
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
+        SystemMessage(content=SYSTEM_PROMPT.format(user_needs=state.get("user_needs"))),
         HumanMessage(content=USER_PROMPT),
     ]
     response = car_catalog_llm.invoke(messages)
     log.debug(f"Este es el resumen de los autos encontrados: {response.content}")
-    return {"response": response.content}
+    return {"response": response.content, "messages": [response]}
 
 
 def clear_car_context(state: MainOrchestratorState) -> dict:
@@ -263,21 +301,23 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
         Ejemplo de entrada:
             *"Quiero buscar un nuevo vehiculo"
             *"Probemos con otras caracteristicas"
-        4. Si el usuario desea ver los resultados de la busqueda de vehiculos:
+        4. Si el usuario desea ver los resultados de la busqueda de vehiculos, responde "text_to_sql".
         Ejemplo de entrada:
             * "Quiero ver los resultados de la busqueda de vehiculos"
             * "Muestra que autos encontraste"
+            * "Que opciones tienes?"
             * "A ver que autos encontraste"
             * "Dame todos los autos encontrados"
             * "Que vehiculos tienes con esas caracteristicas"
-            responde "text_to_sql".
+            
     * Solo response con una de las cuatro posibles opciones posibles: "select_car", "context_car_identification", "clear_car_context", "text_to_sql"
     
     """
+    system_message = f"""Este es el resumen de la conversacion hasta el momento: {state.get("summary", "")} \n\n
+        {INTENTION_PROMPT.format(car_characteristics=state.get("user_needs"))}
+    """
     messages = [
-        SystemMessage(
-            content=INTENTION_PROMPT.format(car_characteristics=state.get("user_needs"))
-        ),
+        SystemMessage(content=system_message),
         HumanMessage(content=f"Este es el mensaje del usuario: {user_input}"),
     ]
     response = car_catalog_llm.invoke(messages)
