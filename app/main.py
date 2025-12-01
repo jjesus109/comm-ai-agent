@@ -1,7 +1,7 @@
 import logging
 from uuid import uuid4
 
-from fastapi import Form, FastAPI
+from fastapi import FastAPI, Request
 import uvicorn
 from twilio.rest import Client
 from langchain_core.messages import HumanMessage
@@ -34,20 +34,24 @@ app = FastAPI(
 )
 
 
-def send_message(body_text):
-    client.messages.create(
-        from_=f"whatsapp:+{conf.twilio_phone_number}",
-        body=body_text,
-        to=f"whatsapp:+{conf.twilio_phone_number_to}",
-    )
-
-
 @app.post("/message")
-async def reply(body_text: str = Form()):
-    print(f"body_text: {body_text}")
-    message = "hi, from api"
-    response = send_message(message)
-    return response
+async def reply(request: Request):
+    body_text = "Hi, from fast api!"
+    try:
+        form_data = await request.form()
+        message_body = form_data.get("Body", "")
+        print(f"Received message: '{message_body}' from data: {form_data}")
+        client.messages.create(
+            from_=f"whatsapp:+{conf.twilio_phone_number}",
+            body=body_text,
+            to=f"whatsapp:+{conf.twilio_phone_number_to}",
+        )
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"Error receiving message: {e}")
+        return ResponseModel(
+            response="Error receiving message", conversation_id=uuid4()
+        )
 
 
 @app.post("/api/chat/", response_model=ResponseModel, responses=responses)
