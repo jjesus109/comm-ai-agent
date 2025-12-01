@@ -60,11 +60,18 @@ async def send_messages(request: Request):
     form_data = await request.form()
     message = form_data.get("Body", "")
     thread_id = form_data.get("WaId", "")
+    from_number = form_data.get("From", "")
+    to_number = form_data.get("To", "")
     config = {"configurable": {"thread_id": thread_id}}
     input_message = HumanMessage(content=message)
     responses = orchestrator_graph.invoke({"messages": [input_message]}, config)
     final_response = responses["response"]
     log.info(f"final_response: {final_response}")
+    client.messages.create(
+        from_=to_number,
+        body=final_response,
+        to=from_number,
+    )
     return {"status": "ok"}
 
 
