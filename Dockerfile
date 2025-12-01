@@ -4,6 +4,7 @@ COPY pyproject.toml .
 COPY uv.lock .
 RUN uv sync
 COPY app/ /app/app/
+COPY data/ /app/data/
 WORKDIR /app
 RUN adduser -m userapp && chown -R userapp:userapp /app
 USER userapp
