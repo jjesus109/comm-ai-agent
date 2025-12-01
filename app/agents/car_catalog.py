@@ -24,7 +24,13 @@ NODE_NAMES = [
     "clear_car_context",
     "text_to_sql",
 ]
-SUB_NODES = Literal[NODE_NAMES]  # type: ignore
+SUB_NODES = Literal[
+    "select_car",
+    "context_car_identification",
+    "clear_car_context",
+    "text_to_sql",
+    "__end__",  # Instead of use END from lang graph, to avoid mypy error
+]
 
 car_catalog_llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite", temperature=conf.temperature
@@ -34,7 +40,7 @@ car_catalog_llm = ChatGoogleGenerativeAI(
 def select_car(state: MainOrchestratorState) -> dict:
     if not state.get("car_findings"):
         return {
-            "response": "No hemos buscado un auto todavia, por favor, defina algunas caracteristicas del auto que desea buscar y seleccione uno para poderlo ayudar",
+            "user_response": "No hemos buscado un auto todavia, por favor, defina algunas caracteristicas del auto que desea buscar y seleccione uno para poderlo ayudar",
             "current_action": "select_car",
         }
     car_findings = state["car_findings"]
@@ -164,13 +170,7 @@ def context_car_identification(state: MainOrchestratorState) -> dict:
 
 def text_to_sql(state: MainOrchestratorState) -> dict:
     if not state.get("user_needs"):
-        return {
-            "messages": [
-                SystemMessage(
-                    content="Primero defina algunas caracteristicas del auto que desea buscar"
-                )
-            ]
-        }
+        return {"error": "No user needs found", "current_action": "text_to_sql"}
     user_needs = state["user_needs"]
     SYSTEM_PROMPT = """
     Eres un experto en **Generación de Consultas SQL (SQL Generator)**. Tu única tarea es crear una consulta SQL estándar (SQL ANSI, compatible con PostgreSQL/MySQL) para buscar vehículos.
@@ -234,6 +234,10 @@ def dict_factory(cursor, row):
 
 
 def search_cars(state: MainOrchestratorState) -> dict:
+    if not state.get("query"):
+        return {
+            "user_response": "Primero, empezemos con definir algunas caracteristicas del auto que deseas buscar"
+        }
     query = state["query"]
     car_catalog_db_conn.row_factory = dict_factory
     try:
@@ -278,40 +282,31 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     if current_action in NODE_NAMES:
         return END
     user_input = state["message_to_analyze"]
-    INTENTION_PROMPT = """Encuentra la decision que un usuario desea realizar basado en las caracteristicas del auto que eligio el usuario
+    INTENTION_PROMPT = """## 🤖 Tarea: Clasificador de Intención de Búsqueda de Vehículos
+    Eres un clasificador de intención experto y tu única función es determinar el **objetivo principal** del último mensaje del usuario en un contexto de búsqueda de vehículos.
+
+    ### 📝 CONTEXTO DE ENTRADA:
+    El sistema te proporciona el contexto actual de la búsqueda (dentro de <car_characteristics>), pero la decisión de acción debe basarse primariamente en el **nuevo mensaje del usuario y el resumen de la conversacion hasta el momento**.
+
     <car_characteristics>
     {car_characteristics}
     </car_characteristics>
-    Si el usuario no tiene ninguna caracteristica, vendra con un lista vacia, por lo que tendra intencion de buscar un vehiculo.
-    * Piensa antes de responder
-    # REQUISITOS:
-    * OBLIGATORIO: Deber elegir alguno de los siguientes escenarios:
-        1. Si el usuario selecciona un auto, responde "select_car".
-        Ejemplo de entrada:
-            * "Me gusta la chevrolet chayenne 2019"
-            * "Me interesa el audio a3 2010"
-            * "Quiero el toyota 2018"
-            * "Quiero la camioneta ford f150 2020"
-            * "Me encanta el mercedes benz c200 2021"
-        2. Si el usuario da caracteristicas de un vehiculo, responde "context_car_identification".
-        Ejemplo de entrada:
-            * "Quiero un auto de la marca Toyota"
-            * "Quiero un auto de la marca Toyota, modelo Corolla, año 2024, version 1.6, bluetooth, dimensiones 4.5x1.8x1.5, categoria de vehiculo sedan"º
-        3. Si el usuario desea comenzar con una nueva busqueda de vehiculos, responde "clear_car_context".
-        Ejemplo de entrada:
-            *"Quiero buscar un nuevo vehiculo"
-            *"Probemos con otras caracteristicas"
-        4. Si el usuario desea ver los resultados de la busqueda de vehiculos, responde "text_to_sql".
-        Ejemplo de entrada:
-            * "Quiero ver los resultados de la busqueda de vehiculos"
-            * "Muestra que autos encontraste"
-            * "Que opciones tienes?"
-            * "A ver que autos encontraste"
-            * "Dame todos los autos encontrados"
-            * "Que vehiculos tienes con esas caracteristicas"
-            
-    * Solo response con una de las cuatro posibles opciones posibles: "select_car", "context_car_identification", "clear_car_context", "text_to_sql"
-    
+
+    ### 💡 INSTRUCCIONES CLAVE Y REQUISITOS:
+    1.  **Analiza la Intención:** Clasifica el nuevo mensaje del usuario en una de las cuatro categorías definidas.
+    2.  **Respuesta OBLIGATORIA:** Responde **únicamente** con el nombre de la acción (e.g., "select_car"). No incluyas explicaciones, encabezados, o texto adicional.
+
+    ### ⚙️ POSIBLES ACCIONES (ESCOGE SÓLO UNA):
+
+    | Acción | Definición y Lógica | Ejemplos de Entrada |
+    | :--- | :--- | :--- |
+    | **"select_car"** | El usuario ha **elegido un vehículo específico** (por marca, modelo y/o año) con la intención de **obtener detalles adicionales, iniciar cotización/financiamiento, o reservarlo**. | "Me gusta la Chevrolet Cheyenne 2019", "Quiero el Toyota 2018", "Me interesa el audio a3 2010", "Dame más detalles de ese Mercedes Benz c200 2021". |
+    | **"context_car_identification"** | El usuario está **definiendo, agregando o modificando criterios de búsqueda** (filtros, rangos, características). El sistema debe actualizar el contexto de búsqueda con esta información (incluso si la lista de características actual está vacía). | "Quiero un auto de la marca Toyota", "Debe ser modelo Corolla, año 2024", "Que tenga bluetooth y CarPlay", "Busco un sedan más barato que 200,000 pesos". |
+    | **"text_to_sql"** | El usuario solicita **ejecutar la búsqueda actual** (basada en el contexto existente) y **ver los resultados** encontrados por el sistema. | "Quiero ver los resultados de la busqueda de vehiculos", "Muestra que autos encontraste", "¿Qué opciones tienes?", "A ver que autos encontraste", "Que vehiculos tienes con esas caracteristicas". |
+    | **"clear_car_context"** | El usuario pide **borrar** la búsqueda actual y **comenzar de cero** con un nuevo set de filtros. | "Quiero buscar un nuevo vehiculo", "Probemos con otras caracteristicas", "Borra mi búsqueda actual", "Empecemos de nuevo". |
+
+    ---
+    **MENSAJE DEL USUARIO A CLASIFICAR:**
     """
     system_message = f"""Este es el resumen de la conversacion hasta el momento: {state.get("summary", "")} \n\n
         {INTENTION_PROMPT.format(car_characteristics=state.get("user_needs"))}
@@ -339,7 +334,7 @@ def orchestrator_node(state: MainOrchestratorState) -> dict:
     elif state["current_action"] == "text_to_sql":
         response = state["response"]
     elif state["current_action"] == "select_car":
-        response = f"Genial, Amaras tu {state['selected_car']['brand']} {state['selected_car']['model']} {state['selected_car']['year']} ¿Deseas un plan de financiamiento para este vehiculo?"
+        response = state["user_response"]
     elif state["current_action"] == "clear_car_context":
         response = "Perfecto, ¡Iniciaremos una nueva busqueda de tu auto ideal!"
 
