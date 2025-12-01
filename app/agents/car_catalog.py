@@ -34,11 +34,8 @@ car_catalog_llm = ChatGoogleGenerativeAI(
 def select_car(state: MainOrchestratorState) -> dict:
     if not state.get("car_findings"):
         return {
-            "messages": [
-                SystemMessage(
-                    content="No hemos buscado un auto todavia, por favor, defina algunas caracteristicas del auto que desea buscar y seleccione uno para poderlo ayudar"
-                )
-            ]
+            "response": "No hemos buscado un auto todavia, por favor, defina algunas caracteristicas del auto que desea buscar y seleccione uno para poderlo ayudar",
+            "current_action": "select_car",
         }
     car_findings = state["car_findings"]
     selected_car = state["message_to_analyze"]
@@ -87,40 +84,53 @@ def select_car(state: MainOrchestratorState) -> dict:
 
 def context_car_identification(state: MainOrchestratorState) -> dict:
     SYSTEM_PROMPT = """
-    Eres un vendedor experto en autos, ayuda a un usuario a encontrar el auto que busca. 
-    Identifica las necesidades del usuario:
-    * Marca
-    * Kilometraje
-    * Precio
-    * Modelo
-    * Year
-    * Version
-    * Bluetooth
-    * Largo
-    * Ancho
-    * Alto
-    * CarPlay
-    Si solo identificas algunas necesidades, devuelve solo las necesidades que identificaste.
-    Ejemplo de output:
+    Eres un experto en **Extracción de Características y Asesoría de Automóviles**. Tu tarea es analizar la última intervención del cliente para extraer sus requisitos específicos de búsqueda y, al finalizar, solicitarle cualquier otro requisito que no haya mencionado.
+
+    ### 🎯 Tareas Clave:
+    1.  **Extracción Estricta:** Identifica y extrae **solo** los valores para las características listadas a continuación.
+    2.  **Generación de Pregunta Abierta:** Al finalizar la extracción, genera un **mensaje de seguimiento** dirigido al cliente para preguntarle sobre **cualquier otra característica o requisito** que no haya mencionado y que considere importante. Este mensaje debe ir en el campo `user_response`.
+
+    ### 📋 Características a Extraer (y Tipos de Datos):
+    | Característica | Clave de Salida | Tipo de Dato | Notas de Extracción |
+    | :--- | :--- | :--- | :--- |
+    | Marca(s) | `marca` | `List[str]` | Una lista de marcas mencionadas. |
+    | Kilometraje | `kilometraje` | `int` | Kilometraje máximo o un rango (extrae el valor singular o el máximo). |
+    | Precio | `precio_minimo`, `precio_maximo` | `float` | Extrae el rango de precios si es posible. |
+    | Modelo(s) | `modelo` | `List[str]` | Una lista de modelos mencionados. |
+    | Año | `year_minimo`, `year_maximo` | `int` | Extrae el rango de años si es posible. |
+    | Versión Específica | `version` | `Optional[str]` | Si menciona una versión como "S", "GT", etc. |
+    | Requisito Bluetooth | `bluetooth` | `bool` | `True` si lo menciona como deseado. |
+    | Largo del Auto | `largo` | `float` | Valor numérico del largo. |
+    | Ancho del Auto | `ancho` | `float` | Valor numérico del ancho. |
+    | Alto del Auto | `alto` | `float` | Valor numérico del alto. |
+    | Requisito CarPlay | `car_play` | `bool` | `True` si lo menciona como deseado. |
+
+    ### 📝 Reglas de Salida:
+    * **NO INVENTES NINGUNA INFORMACIÓN O VALOR.**
+    * Si el cliente no proporciona información para una necesidad, **OMITE** la clave de salida correspondiente (no uses `null`, `None`, o `0` por defecto).
+    * Tu respuesta **debe ser únicamente un objeto JSON**.
+    * Si el cliente no tiene ninguna necesidad, debes incluir la clave `"user_response"` con el mensaje de seguimiento para preguntar por OTRAS características de forma amable y resaltar sobre la utilidad de dar la mayor cantidad de caracteristicas posibles.
+
+    ### 🔑 Estructura de Salida Requerida:
+    Tu objeto JSON **debe** incluir la clave `"user_response"`.
+
+    ```json
     {
         "marca": List[str],
         "kilometraje": int,
-        "precio_minimo": precio minimo,
-        "precio_maximo": precio maximo,
-        "modelo": Lista de modelos,
+        "precio_minimo": float,
+        "precio_maximo": float,
+        "modelo": List[str],
         "year_minimo": int,
         "year_maximo": int,
-        "version": Optional[string],
+        "version": str, 
         "bluetooth": bool,
         "largo": float,
         "ancho": float,
         "alto": float,
         "car_play": bool,
+        "user_response": str // Mensaje de seguimiento para preguntar por OTRAS características.
     }
-    * Sigue el ejemplo de output para crear el output. 
-    * No inventes ninguna informacion.
-    * El output esperado es una lista de necesidades del usuario, en caso de que no haya ninguna necesidad, devuelve un diccionario vacio.
-    * Si el usuario no proporciona informacion sobre una necesidad, no la incluyas en el output.
     """
 
     USER_PROMPT = f"Extrae las necesidades del usuario de este mensaje: {state['message_to_analyze']}"
@@ -147,6 +157,7 @@ def context_car_identification(state: MainOrchestratorState) -> dict:
     return {
         "user_needs": updated_user_needs,
         "current_action": "context_car_identification",
+        "user_response": user_needs.get("user_response"),
     }
 
 
@@ -229,8 +240,11 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     if current_action in NODE_NAMES:
         return END
     user_input = state["message_to_analyze"]
-    INTENTION_PROMPT = """Encuentra la decision que un usuario desea realizar basada en la siguiente entrada:
-    {user_input}
+    INTENTION_PROMPT = """Encuentra la decision que un usuario desea realizar basado en las caracteristicas del auto que eligio el usuario
+    <car_characteristics>
+    {car_characteristics}
+    </car_characteristics>
+    Si el usuario no tiene ninguna caracteristica, vendra con un lista vacia, por lo que tendra intencion de buscar un vehiculo.
     * Piensa antes de responder
     # REQUISITOS:
     * OBLIGATORIO: Deber elegir alguno de los siguientes escenarios:
@@ -260,7 +274,13 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     * Solo response con una de las cuatro posibles opciones posibles: "select_car", "context_car_identification", "clear_car_context", "text_to_sql"
     
     """
-    response = car_catalog_llm.invoke(INTENTION_PROMPT.format(user_input=user_input))
+    messages = [
+        SystemMessage(
+            content=INTENTION_PROMPT.format(car_characteristics=state.get("user_needs"))
+        ),
+        HumanMessage(content=f"Este es el mensaje del usuario: {user_input}"),
+    ]
+    response = car_catalog_llm.invoke(messages)
     selected_action = response.content
     log.debug(f"Este es la accion seleccionada: {selected_action}")
     return selected_action
@@ -275,7 +295,7 @@ def orchestrator_node(state: MainOrchestratorState) -> dict:
     """
     response = ""
     if state["current_action"] == "context_car_identification":
-        response = "¿Hay alguna otra caracteristica del auto que te interese?"
+        response = state["user_response"]
     elif state["current_action"] == "text_to_sql":
         response = state["response"]
     elif state["current_action"] == "select_car":

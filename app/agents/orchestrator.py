@@ -2,6 +2,7 @@ import logging
 import re
 from typing import Literal
 
+from langchain_core.messages import HumanMessage, RemoveMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -19,16 +20,30 @@ memory = SqliteSaver(agents_db_conn)
 log = logging.getLogger(__name__)
 conf = Configuration()
 
+RATE_SUMMARIZE_MESSAGES = 6
 SUB_AGENTS = Literal["offer_value", "car_catalog", "financial_plan"]
-INTENTION_PROMPT = """Encuentra la decision que un usuario desea realizar basada en la siguiente entrada:
-{user_input}
-# REQUISITOS:
-* OBLIGATORIO: Deber elegir alguno de los siguientes escenarios:
-    1. El usuario busca conocer alguna respuesta relacionada con la empresa, saber que hace, donde se origino, como funciona, todo acerca de la propuesta de valor, responde "offer_value".
-    2. El usuario desea conocer cualquier tema relacionado algun vehiculo como marca, modelo, año, detalles del mismo, response "car_catalog".
-    3. El usuario planea comprar un vehiculo o desea conocer informacion sobre como comprarlo. Ya conoce que vehiculo desea comprar o busca uno para comprar de forma inmediata. Response "financial_plan".
-* Solo response con una de las tres posibles opciones posibles: "offer_value", "car_catalog", "financial_plan"
-* Piensa antes de responder
+INTENTION_PROMPT = """Eres un **Motor de Enrutamiento (Router)** para un agente de IA. Tu única tarea es analizar la intención del usuario y seleccionar **exactamente uno** de los flujos de trabajo predefinidos.
+
+### 🎯 Tarea y Requisito Obligatorio:
+Selecciona una, y solo una, de las siguientes claves. **Tu respuesta debe ser únicamente la clave seleccionada, sin ningún otro texto o explicación.**
+
+### 🗺️ Flujos Posibles (Opciones):
+
+| Clave de Salida | Intención del Usuario | Descripción de la Intención |
+| :--- | :--- | :--- |
+| **"offer_value"** | **Propuesta de Valor / Información de la Empresa** | El usuario busca respuestas relacionadas con la empresa: qué hace, dónde se originó, cómo funciona, su misión, o la propuesta de valor del negocio. |
+| **"car_catalog"** | **Detalles / Características del Vehículo** | El usuario desea conocer cualquier tema relacionado con un vehículo específico o categoría: marca, modelo, año, detalles técnicos, características, etc., sin expresar una intención inmediata de compra. |
+| **"financial_plan"** | **Compra / Financiamiento / Adquisición** | El usuario está en la fase de adquisición o compra: busca un vehículo para comprar de forma inmediata, desea conocer planes de financiamiento, opciones de pago, o procesos de compra. |
+
+---
+
+### 📝 Instrucción de Salida:
+**SOLO debes responder con una de las siguientes tres cadenas de texto, sin comillas ni texto adicional:**
+1.  "offer_value"
+2.  "car_catalog"
+3.  "financial_plan"
+
+**Analiza la siguiente entrada del usuario:**
 """
 
 orchestrator_agent = ChatGoogleGenerativeAI(
@@ -37,8 +52,21 @@ orchestrator_agent = ChatGoogleGenerativeAI(
 
 
 def intention_finder(state: MainOrchestratorState) -> SUB_AGENTS:
-    user_input = state["message_to_analyze"]
-    response = orchestrator_agent.invoke(INTENTION_PROMPT.format(user_input=user_input))
+    summary = state.get("summary", "")
+    human_message = f"Este es el mensaje del usuario: {state['message_to_analyze']}"
+
+    if summary:
+        system_message = (
+            f"Resumen de la conversacion anterior: {summary} \n\n {INTENTION_PROMPT}"
+        )
+    else:
+        system_message = INTENTION_PROMPT
+    messages = [
+        SystemMessage(content=system_message),
+        HumanMessage(content=human_message),
+    ]
+
+    response = orchestrator_agent.invoke(messages)
     return response.content
 
 
@@ -58,7 +86,7 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
         response = decide_by_model(content)
     print(f"response from model: {response}")
     if response == "allow":
-        return "continue_operation"
+        return "summarize_conversation"
     return "manage_unsecure"
 
 
@@ -148,7 +176,7 @@ def continue_operation(state: MainOrchestratorState) -> dict:
 
 def manage_unsecure(state: MainOrchestratorState) -> dict:
     return {
-        "messages": ["Regresemos a nuestro tema principal"],
+        "response": "Regresemos a nuestro tema principal",
         "current_action": "manage_unsecure",
     }
 
@@ -183,10 +211,35 @@ def entry_point(state: MainOrchestratorState) -> dict:
     return {"message_to_analyze": message, "current_action": "orchestrator"}
 
 
+def summarize_conversation(state: MainOrchestratorState):
+    summary = state.get("summary", "")
+    messages = state["messages"]
+    if len(messages) < RATE_SUMMARIZE_MESSAGES:
+        return {"summary": ""}
+    if summary:
+        summary_message = (
+            f"This is summary of the conversation to date: {summary}\n\n"
+            "Extend the summary by taking into account the new messages above:"
+        )
+
+    else:
+        # If no summary exists, just create a new one
+        summary_message = "Create a summary of the conversation above:"
+
+    # Add prompt to our history
+    messages = state["messages"] + [HumanMessage(content=summary_message)]
+    response = orchestrator_agent.invoke(messages)
+
+    # Delete all but the 2 most recent messages and add our summary to the state
+    delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
+    return {"summary": response.content, "messages": delete_messages}
+
+
 # Define a new graph
 workflow = StateGraph(MainOrchestratorState)
 workflow.add_node(entry_point)
 workflow.add_node(manage_unsecure)
+workflow.add_node(summarize_conversation)
 workflow.add_node("financial_plan", financial_plan_graph.compile(checkpointer=memory))
 workflow.add_node("offer_value", offer_value_graph.compile(checkpointer=memory))
 workflow.add_node("car_catalog", car_catalog_graph.compile(checkpointer=memory))
@@ -195,6 +248,7 @@ workflow.add_node(continue_operation)
 
 workflow.add_edge(START, "entry_point")
 workflow.add_conditional_edges("entry_point", verify_malicious_content)
+workflow.add_edge("summarize_conversation", "continue_operation")
 workflow.add_conditional_edges("continue_operation", intention_finder)
 workflow.add_edge("financial_plan", END)
 workflow.add_edge("car_catalog", END)
