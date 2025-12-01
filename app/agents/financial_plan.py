@@ -1,7 +1,8 @@
-import json
-import logging
 import os
 import re
+import json
+import logging
+from typing import Literal
 
 import pandas as pd
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -19,7 +20,10 @@ DATA_PATH = os.path.join(os.getcwd(), "data")
 CAR_CATALOG_PATH = os.path.join(DATA_PATH, "car_catalog.csv")
 CAR_CATALOG = pd.read_csv(CAR_CATALOG_PATH).to_markdown()
 ANNUAL_RATE = 0.10
-
+SUB_NODES = Literal[
+    "context_financial_identification", "financial_calculator", "select_car", "__end__"
+]
+NODE_NAMES = ["context_financial_identification", "financial_calculator", "select_car"]
 financial_plan_agent = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite", temperature=conf.temperature
 )
@@ -28,6 +32,9 @@ financial_plan_agent = ChatGoogleGenerativeAI(
 def context_financial_identification(state: MainOrchestratorState) -> dict:
     SYSTEM_PROMPT = """
     Eres un experto en **Extracción de Información y Ventas de Automóviles**. Tu tarea es analizar la última intervención del cliente y ayudarle a definir sus necesidades de financiamiento.
+    ### Contexto:
+    El usuario ha seleccionado un auto y está iniciando el proceso de cotización o financiación.
+
 
     ### 🎯 Tareas Clave:
     1.  **Extraer Campos:** Identifica los valores para **Años de financiamiento** y **Pago inicial** a partir de la respuesta del cliente.
@@ -37,6 +44,8 @@ def context_financial_identification(state: MainOrchestratorState) -> dict:
     * **Años de financiamiento (`years`):** Debe ser un número entero (int) que represente la duración del préstamo en años. (Ej. 3, 5, 7).
     * **Pago inicial (`down_payment`):** Debe ser un número decimal (float) que represente el monto total de enganche. (Ej. 10000.00, 5000.50).
     * **NO INVENTES NINGÚN VALOR.** Si la información no está clara, omite el campo en la salida.
+    * **Si ya tiene alguno de los valores necesarios, no solicites el mismo valor nuevamente, y confirma al usuario si desea continuar con el proceso para mostrarle su cotizacion en el campo "user_response"*
+    * **Si ya tiene todos los valores, es posible que desee cambiar algun valor, confirma regresando el valor y confirmando en un mensaje el valor al usuario.**
 
     ### 📝 Formato de Salida Requerido (JSON):
     Tu respuesta **debe ser únicamente un objeto JSON**.
@@ -64,10 +73,27 @@ def context_financial_identification(state: MainOrchestratorState) -> dict:
     **Ejemplo 3 (Información ambigua):**
     ```json
     {
-        "user_response": "Para obtener un financiamiento, necesitamos saber cuántos años estará el préstamo y cuánto sería el enganche. ¿Puedes indicar estos detalles?"
+        
+        "user_response": "Para obtener un financiamiento, necesitamos saber en cuantos años deseas pagar el auto y cuánto sería el enganche. ¿Puedes indicarme estos detalles?"
+    }
+    **Ejemplo 4 (Información completa):**
+    ```json
+    {
+        "years": 3,
+        "down_payment": 10000.00,
+        "user_response": "Muy bien!, ya tengo los datos necesarios para calcular tu cotizacion. Continuaremos con el proceso"
     }
     """
-    USER_PROMPT = f"Extrae las necesidades de financiamiento del usuario de este mensaje: {state['message_to_analyze']}"
+    financial_plan_values = {
+        "years": state.get("years"),
+        "down_payment": state.get("down_payment"),
+    }
+    USER_PROMPT = f"""Extrae las necesidades de financiamiento del usuario de este mensaje: {state["message_to_analyze"]}
+    Aqui esta el listado de valores necesarios para el proceso de financiación:
+    <financial_plan_values>
+    {financial_plan_values}
+    </financial_plan_values>
+    """
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=USER_PROMPT),
@@ -93,10 +119,10 @@ def financial_calculator(state: MainOrchestratorState) -> dict:
     """
     This functions calculates the financial plan for a given car based on price, interest rate, months and down payment
     """
-    months = state["years"] * 12
-    down_payment = state["down_payment"]
-    value_to_finance = state["selected_car"]["price"] - down_payment
-    monthly_rate = ANNUAL_RATE / 12
+    months = float(state["years"]) * 12
+    down_payment = float(state["down_payment"])
+    value_to_finance = float(state["selected_car"]["price"]) - down_payment
+    monthly_rate = float(ANNUAL_RATE / 12)
     monthly_payment = (
         value_to_finance * monthly_rate * (1 + monthly_rate) ** months
     ) / ((1 + monthly_rate) ** months - 1)
@@ -142,23 +168,110 @@ def organize_response(state: MainOrchestratorState) -> dict:
     }
 
 
-def decision_node(state: MainOrchestratorState) -> str:
+def select_car(state: MainOrchestratorState) -> dict:
+    if not state.get("car_findings"):
+        return {
+            "user_response": "No hemos buscado un auto todavia, por favor, dime alguna caracteristica del auto que deseas buscar.",
+            "current_action": "select_car",
+        }
+    car_findings = state["car_findings"]
+    selected_car = state["message_to_analyze"]
+    SYSTEM_PROMPT = """
+    Basado en la seleccion del usuario, elie el auto al que se refiere el usuario.
+    Si el auto seleccionado no existe, devuelve un mensaje piendo al usuario que eliga un auto de los encontrados.
+    El output esperado es un json con los datos del auto seleccionado.
+    No inventes ninguna informacion.
+    No respondas preguntas que no sean relacionadas con el auto seleccionado.
+    Planifica y luego responde a la pregunta.
+    Ejemplo de output:
+    ```json
+        {
+            "brand": str,
+            "model": str,
+            "year": int,
+            "price": float,
+            "stock_id": str,
+        }
+    ```
     """
-    This function decides what to do next based on the user's response
+    USER_PROMPT = f"""
+    Esta es la lista de los autos ofrecidos al usuario: 
+    ```json
+    {car_findings}
+    ```
+    Esta es la seleccion del usuario: {selected_car}
     """
-    if state.get("user_response"):
+    messages = [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(content=USER_PROMPT),
+    ]
+    response = financial_plan_agent.invoke(messages)
+
+    pattern = re.compile(r"\{(.*)\}", re.DOTALL)
+
+    # Buscar y extraer el contenido
+    match = pattern.search(response.content)
+    selected_car = {}  # type: ignore
+    if match:
+        contenido_json = "{" + match.group(1).strip() + "}"
+        selected_car = json.loads(contenido_json)
+    log.debug(f"Este es el auto seleccionado: {selected_car}")
+    return {"selected_car": selected_car, "current_action": "select_car"}
+
+
+def router_node(state: MainOrchestratorState) -> SUB_NODES:
+    current_action = state["current_action"]
+    # To avoid infinite loop, if the current action is a sub node, return END
+    if current_action in NODE_NAMES:
         return END
-    if state.get("years") and state.get("down_payment"):
-        return "financial_calculator"
-    else:
-        return "context_financial_identification"
+    INTENTION_PROMPT = """## 🤖 Tarea: Enrutador de Etapa de Compra
+    Eres un enrutador de LangGraph experto en el proceso de compra y financiación de vehículos. Tu única función es determinar la **etapa exacta** de la cotización en la que se encuentra el usuario, basándote en su último mensaje.
+
+    ### 📝 CONTEXTO:
+    Se asume que el usuario ya ha seleccionado un vehículo y está iniciando el proceso de cotización o financiación.
+    Aqui esta el listado de valores necesarios para el proceso de financiación:
+    <financial_plan_values>
+    {financial_plan_values}
+    </financial_plan_values>
+    
+
+    ### 💡 INSTRUCCIONES CLAVE Y REQUISITOS:
+    1.  **Analiza la Intención:** Clasifica el mensaje del usuario en una de las tres acciones específicas del proceso de financiación.
+    2.  **Respuesta OBLIGATORIA:** Responde **únicamente** con el nombre de la acción (el nombre de la ruta o nodo siguiente), sin explicaciones, encabezados, o texto adicional.
+    3.  **Si existen todos los campos necesarios, elige la ruta "financial_calculator", en caso contrario, elige la ruta "context_financial_identification".**
+
+    ### ⚙️ POSIBLES RUTAS (ESCOGE SÓLO UNA):
+
+    | Ruta | Definición y Propósito | Ejemplos de Entrada |
+    | :--- | :--- | :--- |
+    | **"select_car"** | El usuario confirma el vehículo elegido o solicita el **siguiente paso lógico** (cotización inicial) **sin dar cifras** de enganche o plazos. Actúa como el *punto de entrada* al subgrafo de financiación. | "Quiero cotizar este auto.", "Procedamos con el [Nombre de Auto].", "Dime más sobre la financiación.", "¿Cómo puedo comprarlo?". |
+    | **"context_financial_identification"** | El usuario **proporciona datos numéricos** esenciales para el cálculo, como el **monto de enganche (down payment)**, el **plazo (meses/años)** o **actualiza** alguno de estos valores. | "Mi enganche será de 50,000 pesos.", "Quiero pagarlo a 36 meses.", "Dime cuánto es la mensualidad si doy $100,000 de enganche y 48 meses.", "Cambia mi plazo a 60 meses.". |
+    | **"financial_calculator"** | El usuario ha terminado de dar los datos o simplemente **solicita ver los planes/cálculos finales** disponibles para el vehículo seleccionado. Esta es la instrucción para ejecutar la lógica de cálculo. | "Calcula la mensualidad final ahora.", "¿Cuáles son los planes de financiamiento disponibles?", "Ya tengo todos los datos, dame el plan de pago.", "Dame la cotización completa.". |
+
+    ---
+
+    **MENSAJE DEL USUARIO A CLASIFICAR:**
+    """
+    financial_plan_values = {
+        "years": state.get("years"),
+        "down_payment": state.get("down_payment"),
+    }
+    system_message = f"""Este es el resumen de la conversacion hasta el momento: {state.get("summary", "")} \n\n
+        {INTENTION_PROMPT.format(car_characteristics=state.get("user_needs"), financial_plan_values=financial_plan_values)}
+    """
+    messages = [SystemMessage(content=system_message)] + state["messages"]
+    response = financial_plan_agent.invoke(messages)
+    selected_action = response.content
+    log.debug(
+        f"Este es la seleccion de financial plan elegida por el enrutador: {selected_action}"
+    )
+    return selected_action
 
 
 def entry_point(state: MainOrchestratorState) -> dict:
     # Ask user to complete the missing information
-    if state.get("user_response"):
-        return {"response": state.get("user_response")}
-    return {"current_action": "financial_plan"}
+    response = state.get("user_response")
+    return {"response": response}
 
 
 # Define a new graph
@@ -167,8 +280,10 @@ financial_plan_graph.add_node(entry_point)
 financial_plan_graph.add_node(context_financial_identification)
 financial_plan_graph.add_node(financial_calculator)
 financial_plan_graph.add_node(organize_response)
+financial_plan_graph.add_node(select_car)
 financial_plan_graph.add_edge(START, "entry_point")
-financial_plan_graph.add_conditional_edges("entry_point", decision_node)
+financial_plan_graph.add_conditional_edges("entry_point", router_node)
+financial_plan_graph.add_edge("select_car", "context_financial_identification")
 financial_plan_graph.add_edge("context_financial_identification", "entry_point")
 financial_plan_graph.add_edge("financial_calculator", "organize_response")
 financial_plan_graph.add_edge("organize_response", END)

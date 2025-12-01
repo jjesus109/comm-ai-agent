@@ -21,7 +21,7 @@ memory.setup()
 log = logging.getLogger(__name__)
 conf = Configuration()
 
-RATE_SUMMARIZE_MESSAGES = 6
+RATE_SUMMARIZE_MESSAGES = 4
 SUB_AGENTS = Literal["offer_value", "car_catalog", "financial_plan"]
 INTENTION_PROMPT = """Eres un **Motor de Enrutamiento (Router)** para un agente de IA. Tu única tarea es analizar la intención del usuario y seleccionar **exactamente uno** de los flujos de trabajo predefinidos.
 
@@ -87,7 +87,7 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
         response = decide_by_model(content)
     print(f"response from model: {response}")
     if response == "allow":
-        return "summarize_conversation"
+        return "wait_to_analyze"
     return "manage_unsecure"
 
 
@@ -223,12 +223,16 @@ def summarize_conversation(state: MainOrchestratorState):
         summary_message = (
             f"Este es el resumen de la conversacion hasta el momento: {summary}\n\n"
             "Extiende el resumen tomando en cuenta los nuevos mensajes anteriores, crea un solo parrafo:"
+            "No incluyas ningun otro texto, solo el resumen en un solo parrafo."
+            "El output devuelto debe ser un solo parrafo."
         )
 
     else:
         # If no summary exists, just create a new one
         summary_message = (
             "Crear un resumen de la conversacion anterior en un solo parrafo:"
+            "No incluyas ningun otro texto, solo el resumen en un solo parrafo."
+            "El output devuelto debe ser un solo parrafo."
         )
 
     # Add prompt to our history
@@ -244,10 +248,19 @@ def summarize_conversation(state: MainOrchestratorState):
     return {"summary": response.content, "messages": delete_messages}
 
 
-# TODO: Mejorar summary por que se muere cuando seleccina un auto.
-# REvisar que el summary lo imprime solo como el json, que pasa ahi?#
-# Deberia de implementar un conditional efge para preguntar cuando se debe de hacer el summary de los mensajes?
-# Define a new graph
+def should_summarize(
+    state: MainOrchestratorState,
+) -> Literal["summarize_conversation", "continue_operation"]:
+    messages = state["messages"]
+    if len(messages) > RATE_SUMMARIZE_MESSAGES:
+        return "summarize_conversation"
+    return "continue_operation"
+
+
+def wait_to_analyze(state: MainOrchestratorState) -> dict:
+    return {"current_action": "wait_to_analyze"}
+
+
 workflow = StateGraph(MainOrchestratorState)
 workflow.add_node(entry_point)
 workflow.add_node(manage_unsecure)
@@ -256,12 +269,13 @@ workflow.add_node("financial_plan", financial_plan_graph.compile(checkpointer=me
 workflow.add_node("offer_value", offer_value_graph.compile(checkpointer=memory))
 workflow.add_node("car_catalog", car_catalog_graph.compile(checkpointer=memory))
 workflow.add_node(continue_operation)
-
+workflow.add_node(wait_to_analyze)
 
 workflow.add_edge(START, "entry_point")
 workflow.add_conditional_edges("entry_point", verify_malicious_content)
-workflow.add_edge("summarize_conversation", "continue_operation")
+workflow.add_conditional_edges("wait_to_analyze", should_summarize)
 workflow.add_conditional_edges("continue_operation", intention_finder)
+workflow.add_edge("summarize_conversation", "continue_operation")
 workflow.add_edge("financial_plan", END)
 workflow.add_edge("car_catalog", END)
 workflow.add_edge("offer_value", END)

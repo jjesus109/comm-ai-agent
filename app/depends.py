@@ -25,4 +25,6 @@ data_path = os.path.join(os.getcwd(), "data")
 
 agents_db_conn = Connection.connect(DB_URI, **connection_kwargs)
 
-car_catalog_db_conn = Connection.connect(CAR_CATALOG_DB_URI, **connection_kwargs)
+
+def get_car_catalog_db_conn():
+    return Connection.connect(CAR_CATALOG_DB_URI, **connection_kwargs)

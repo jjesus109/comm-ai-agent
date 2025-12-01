@@ -42,7 +42,7 @@ class MainOrchestratorState(TypedDict):
     query: str
     errors: str
     car_findings: List[dict]
-    years: int
-    down_payment: float
+    years: str
+    down_payment: str
     monthly_payment: float
     user_response: str

@@ -4,13 +4,14 @@ import json
 import logging
 from typing import Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END
+import psycopg
 
 from app.config import Configuration
-from app.depends import car_catalog_db_conn
+from app.depends import get_car_catalog_db_conn
 from app.agents.models import MainOrchestratorState
 
 log = logging.getLogger(__name__)
@@ -19,13 +20,11 @@ conf = Configuration()
 DATA_PATH = os.path.join(os.getcwd(), "data")
 CAR_CATALOG_PATH = os.path.join(DATA_PATH, "car_catalog.csv")
 NODE_NAMES = [
-    "select_car",
     "context_car_identification",
     "clear_car_context",
     "text_to_sql",
 ]
 SUB_NODES = Literal[
-    "select_car",
     "context_car_identification",
     "clear_car_context",
     "text_to_sql",
@@ -35,57 +34,6 @@ SUB_NODES = Literal[
 car_catalog_llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite", temperature=conf.temperature
 )
-
-
-def select_car(state: MainOrchestratorState) -> dict:
-    if not state.get("car_findings"):
-        return {
-            "user_response": "No hemos buscado un auto todavia, por favor, dime alguna caracteristica del auto que deseas buscar.",
-            "current_action": "select_car",
-        }
-    car_findings = state["car_findings"]
-    selected_car = state["message_to_analyze"]
-    SYSTEM_PROMPT = """
-    Basado en la seleccion del usuario, elie el auto al que se refiere el usuario.
-    Si el auto seleccionado no existe, devuelve un mensaje piendo al usuario que eliga un auto de los encontrados.
-    El output esperado es un json con los datos del auto seleccionado.
-    No inventes ninguna informacion.
-    No respondas preguntas que no sean relacionadas con el auto seleccionado.
-    Planifica y luego responde a la pregunta.
-    Ejemplo de output:
-    ```json
-        {
-            "brand": str,
-            "model": str,
-            "year": int,
-            "price": float,
-            "stock_id": str,
-        }
-    ```
-    """
-    USER_PROMPT = f"""
-    Esta es la lista de los autos ofrecidos al usuario: 
-    ```json
-    {car_findings}
-    ```
-    Esta es la seleccion del usuario: {selected_car}
-    """
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=USER_PROMPT),
-    ]
-    response = car_catalog_llm.invoke(messages)
-
-    pattern = re.compile(r"\{(.*)\}", re.DOTALL)
-
-    # Buscar y extraer el contenido
-    match = pattern.search(response.content)
-    selected_car = {}  # type: ignore
-    if match:
-        contenido_json = "{" + match.group(1).strip() + "}"
-        selected_car = json.loads(contenido_json)
-    log.debug(f"Este es el auto seleccionado: {selected_car}")
-    return {"selected_car": selected_car, "current_action": "select_car"}
 
 
 def context_car_identification(state: MainOrchestratorState) -> dict:
@@ -164,7 +112,6 @@ def context_car_identification(state: MainOrchestratorState) -> dict:
         "user_needs": updated_user_needs,
         "current_action": "context_car_identification",
         "user_response": user_needs.get("user_response"),
-        "messages": [response],
     }
 
 
@@ -239,12 +186,26 @@ def search_cars(state: MainOrchestratorState) -> dict:
             "user_response": "Primero, empezemos con definir algunas caracteristicas del auto que deseas buscar"
         }
     query = state["query"]
-    car_catalog_db_conn.row_factory = dict_factory
     try:
-        cars_filtered = car_catalog_db_conn.execute(query).fetchall()
-        return {"car_findings": cars_filtered}
-    except Exception as e:
-        return {"error": str(e)}
+        # Conexión a la base de datos
+        conn = get_car_catalog_db_conn()
+        cursor = conn.cursor()
+        cursor.execute(query)
+        column_names = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        results_list_of_dicts = []
+        for row in rows:
+            results_list_of_dicts.append(dict(zip(column_names, row)))
+        formatted_results = str(results_list_of_dicts[:5])
+        return {"car_findings": formatted_results}
+
+    except psycopg.errors.Error as e:
+        error_message = f"Error de PostgreSQL: {e}"
+        log.error(f"Database error: {error_message}")
+        return {"error": error_message}
+    finally:
+        if conn:
+            conn.close()
 
 
 def organize_response(state: MainOrchestratorState) -> dict:
@@ -282,6 +243,11 @@ def clear_car_context(state: MainOrchestratorState) -> dict:
         "user_needs": {},
         "current_action": "clear_car_context",
         "user_response": "Perfecto, ¡Iniciaremos una nueva busqueda de tu auto ideal!",
+        "messages": [
+            AIMessage(
+                content="Perfecto, ¡Iniciaremos una nueva busqueda de tu auto ideal!"
+            )
+        ],
     }
 
 
@@ -343,12 +309,10 @@ car_catalog_graph.add_node(orchestrator_node)
 car_catalog_graph.add_node(context_car_identification)
 car_catalog_graph.add_node(search_cars)
 car_catalog_graph.add_node(organize_response)
-car_catalog_graph.add_node(select_car)
 car_catalog_graph.add_node(clear_car_context)
 car_catalog_graph.add_node(text_to_sql)
 car_catalog_graph.add_edge(START, "orchestrator_node")
 car_catalog_graph.add_conditional_edges("orchestrator_node", router_node)
-car_catalog_graph.add_edge("select_car", "orchestrator_node")
 car_catalog_graph.add_edge("clear_car_context", "orchestrator_node")
 car_catalog_graph.add_edge("text_to_sql", "search_cars")
 car_catalog_graph.add_edge("search_cars", "organize_response")
