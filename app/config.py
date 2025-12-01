@@ -2,6 +2,11 @@ from pydantic_settings import BaseSettings
 
 
 class Configuration(BaseSettings):
+    db_user: str
+    db_password: str
+    db_host: str
+    db_port: int
+    db_name: str
     port: int
     host: str
     log_level: str

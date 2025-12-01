@@ -5,8 +5,9 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, RemoveMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END
+from langgraph.checkpoint.postgres import PostgresSaver
+
 from app.config import Configuration
 from app.agents.models import MainOrchestratorState
 from app.depends import agents_db_conn
@@ -15,7 +16,8 @@ from app.agents.car_catalog import car_catalog_graph
 from app.agents.financial_plan import financial_plan_graph
 
 
-memory = SqliteSaver(agents_db_conn)
+memory = PostgresSaver(agents_db_conn)
+memory.setup()
 log = logging.getLogger(__name__)
 conf = Configuration()
 
@@ -240,6 +242,9 @@ def summarize_conversation(state: MainOrchestratorState):
     return {"summary": response.content, "messages": delete_messages}
 
 
+# TODO: Mejorar summary por que se muere cuando seleccina un auto.
+# REvisar que el summary lo imprime solo como el json, que pasa ahi?#
+# Deberia de implementar un conditional efge para preguntar cuando se debe de hacer el summary de los mensajes?
 # Define a new graph
 workflow = StateGraph(MainOrchestratorState)
 workflow.add_node(entry_point)
