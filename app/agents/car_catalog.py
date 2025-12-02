@@ -11,7 +11,7 @@ from langgraph.graph import END
 import psycopg
 
 from app.config import Configuration
-from app.depends import get_car_catalog_db_conn
+from app.depends import car_catalog_db_conn
 from app.agents.models import MainOrchestratorState
 
 log = logging.getLogger(__name__)
@@ -186,26 +186,24 @@ def search_cars(state: MainOrchestratorState) -> dict:
             "user_response": "Primero, empezemos con definir algunas caracteristicas del auto que deseas buscar"
         }
     query = state["query"]
-    try:
-        # Conexión a la base de datos
-        conn = get_car_catalog_db_conn()
-        cursor = conn.cursor()
-        cursor.execute(query)
-        column_names = [desc[0] for desc in cursor.description]
-        rows = cursor.fetchall()
-        results_list_of_dicts = []
-        for row in rows:
-            results_list_of_dicts.append(dict(zip(column_names, row)))
-        formatted_results = str(results_list_of_dicts[:5])
-        return {"car_findings": formatted_results}
 
-    except psycopg.errors.Error as e:
-        error_message = f"Error de PostgreSQL: {e}"
-        log.error(f"Database error: {error_message}")
-        return {"error": error_message}
-    finally:
-        if conn:
-            conn.close()
+    with car_catalog_db_conn.connection() as conn:
+        # Cursor is automatically managed within the connection scope
+        with conn.cursor() as cur:
+            try:
+                cur.execute(query)
+                column_names = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+                results_list_of_dicts = []
+                for row in rows:
+                    results_list_of_dicts.append(dict(zip(column_names, row)))
+                formatted_results = str(results_list_of_dicts[:5])
+                return {"car_findings": formatted_results}
+
+            except psycopg.errors.Error as e:
+                error_message = f"Error de PostgreSQL: {e}"
+                log.error(f"Database error: {error_message}")
+                return {"error": error_message}
 
 
 def organize_response(state: MainOrchestratorState) -> dict:

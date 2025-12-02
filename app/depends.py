@@ -1,7 +1,4 @@
-import os
-
-from psycopg import Connection
-
+from psycopg_pool import ConnectionPool
 from app.config import Configuration
 
 conf = Configuration()
@@ -15,16 +12,18 @@ CAR_CATALOG_DB_URI = (
     f"postgresql://{conf.catalog_db_user}:"
     f"{conf.catalog_db_password}@{conf.catalog_db_host}:{conf.catalog_db_port}/{conf.catalog_db_name}"
 )
-connection_kwargs = {
-    "autocommit": True,
-    "prepare_threshold": 0,
-}
+
+agents_db_conn = ConnectionPool(
+    DB_URI,
+    max_size=10,
+    max_idle=300.0,
+    kwargs={"autocommit": True},
+)
 
 
-data_path = os.path.join(os.getcwd(), "data")
-
-agents_db_conn = Connection.connect(DB_URI, **connection_kwargs)
-
-
-def get_car_catalog_db_conn():
-    return Connection.connect(CAR_CATALOG_DB_URI, **connection_kwargs)
+car_catalog_db_conn = ConnectionPool(
+    CAR_CATALOG_DB_URI,
+    max_size=10,
+    max_idle=300.0,
+    kwargs={"autocommit": True},
+)
