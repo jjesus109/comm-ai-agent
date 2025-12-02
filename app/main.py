@@ -1,8 +1,9 @@
 import logging
+from typing import Annotated
 
 import uvicorn
 from twilio.rest import Client
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Form
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import Configuration
 from app.utils import configure_logger, generate_correlation_id, set_correlation_id
@@ -50,14 +51,18 @@ app.add_middleware(CorrelationIDMiddleware)
 
 
 @app.post("/api/chat/", responses=responses)
-async def send_messages(request: Request):
+async def send_messages(
+    Body: Annotated[str, Form()],
+    WaId: Annotated[str, Form()],
+    From: Annotated[str, Form()],
+    To: Annotated[str, Form()],
+):
     # Manage all logic for twilio requests, it could be in another service,
     # but to simplyfy the code, we will keep it here.
-    form_data = await request.form()
-    message = form_data.get("Body", "")
-    thread_id = form_data.get("WaId", "")
-    from_number = form_data.get("From", "")
-    to_number = form_data.get("To", "")
+    message = Body
+    thread_id = WaId
+    from_number = From
+    to_number = To
     config = {"configurable": {"thread_id": thread_id}}
     input_message = HumanMessage(content=message)
     try:
