@@ -40,7 +40,8 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
 
 
 app = FastAPI(
-    description="Commercial AI Agent",
+    title="Commercial AI Agent",
+    description="Commercial AI Agent that respond user doubts about Kavak company and its products",
     version="0.0.1",
     openapi_url="/api/openapi.json",
 )

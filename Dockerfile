@@ -1,3 +1,4 @@
+# My custom base image upload on dockerhub
 FROM jjesus109/base-python-image:1.0.1
 ENV PYTHONPATH="/app"
 COPY pyproject.toml .
