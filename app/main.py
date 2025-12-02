@@ -1,11 +1,11 @@
 import logging
 
-
 import uvicorn
 from twilio.rest import Client
 from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import Configuration
-from app.utils import configure_logger
+from app.utils import configure_logger, generate_correlation_id, set_correlation_id
 from langchain_core.messages import HumanMessage
 from app.agents.orchestrator import orchestrator_graph
 
@@ -25,11 +25,27 @@ responses = {
 
 
 log = logging.getLogger(__name__)
+
+
+class CorrelationIDMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware that generates and sets a unique correlation ID for each request.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        correlation_id = generate_correlation_id()
+        set_correlation_id(correlation_id)
+        response = await call_next(request)
+        return response
+
+
 app = FastAPI(
     description="Commercial AI Agent",
     version="0.0.1",
     openapi_url="/api/openapi.json",
 )
+
+app.add_middleware(CorrelationIDMiddleware)
 
 
 @app.post("/api/chat/", responses=responses)
