@@ -114,7 +114,7 @@ def context_car_identification(state: MainOrchestratorState) -> dict:
     for key, value in user_needs.items():
         if value:
             updated_user_needs[key] = value  # type: ignore
-    log.debug(f"Este es el contexto del auto identificado: {updated_user_needs}")
+    log.info(f"Este es el contexto del auto identificado: {updated_user_needs}")
     return {
         "user_needs": updated_user_needs,
         "current_action": "context_car_identification",
@@ -185,7 +185,7 @@ def text_to_sql(state: MainOrchestratorState) -> dict:
     # Buscar y extraer el contenido
     match = pattern.search(response.content)
     clean_query = match.group(1).strip()  # type: ignore
-    log.debug(f"Esta es la consulta en SQL: {clean_query}")
+    log.info(f"Esta es la consulta en SQL: {clean_query}")
     return {"query": clean_query, "current_action": "text_to_sql"}
 
 
@@ -301,7 +301,7 @@ def organize_response(state: MainOrchestratorState) -> dict:
             user_needs=state.get("user_needs"), search_results=car_findings
         )
     )
-    log.debug(f"Este es el resumen de los autos encontrados: {response.content}")
+    log.info(f"Este es el resumen de los autos encontrados: {response.content}")
     return {"user_response": response.content, "messages": [response]}
 
 
@@ -368,7 +368,7 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     messages = [SystemMessage(content=system_message)] + state["messages"]
     response = car_catalog_llm.invoke(messages)
     selected_action = response.content
-    log.debug(f"Este es la accion seleccionada: {selected_action}")
+    log.info(f"Este es la accion seleccionada: {selected_action}")
     return selected_action
 
 

@@ -274,7 +274,7 @@ def select_car(state: MainOrchestratorState) -> dict:
     if match:
         contenido_json = "{" + match.group(1).strip() + "}"
         selected_car = json.loads(contenido_json)
-    log.debug(f"Este es el auto seleccionado: {selected_car}")
+    log.info(f"Este es el auto seleccionado: {selected_car}")
     return {"selected_car": selected_car, "current_action": "select_car"}
 
 
@@ -329,7 +329,7 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
     messages = [SystemMessage(content=system_message)] + state["messages"]
     response = financial_plan_agent.invoke(messages)
     selected_action = response.content
-    log.debug(
+    log.info(
         f"Este es la seleccion de financial plan elegida por el enrutador: {selected_action}"
     )
     return selected_action

@@ -77,7 +77,7 @@ def intention_finder(state: MainOrchestratorState) -> SUB_AGENTS:
     ]
 
     response = orchestrator_agent.invoke(messages)
-    log.debug(f"Orchestrator agent flow indentified this intention: {response.content}")
+    log.info(f"Orchestrator agent flow indentified this intention: {response.content}")
     return response.content
 
 
@@ -91,11 +91,11 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
     """
     content = state["message_to_analyze"]
     response = programed_find(content)
-    log.debug(f"response from programed_find: {response}")
+    log.info(f"response from programed_find: {response}")
     if response == "nothing":
         # Remove return and store findings in a variable
         response = decide_by_model(content)
-    log.debug(f"response from model: {response}")
+    log.info(f"response from model: {response}")
     if response == "allow":
         return "wait_to_analyze"
     return "manage_unsecure"
@@ -247,8 +247,8 @@ def entry_point(state: MainOrchestratorState) -> dict:
         dict: elements to include in the state.
     """
     message = state["messages"][-1].content
-    log.debug(f"message: {state['messages']}")
-    log.debug(f"summary: {state.get('summary', '')}")
+    log.info(f"message: {state['messages']}")
+    log.info(f"summary: {state.get('summary', '')}")
     return {"message_to_analyze": message, "current_action": "orchestrator"}
 
 
