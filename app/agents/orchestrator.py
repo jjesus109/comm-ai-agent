@@ -32,7 +32,7 @@ Selecciona una, y solo una, de las siguientes claves. **Tu respuesta debe ser ú
 
 | Clave de Salida | Intención del Usuario | Descripción de la Intención |
 | :--- | :--- | :--- |
-| **"offer_value"** | **Propuesta de Valor / Información de la Empresa** | El usuario busca respuestas relacionadas con la empresa: qué hace, dónde se originó, cómo funciona, su misión, o la propuesta de valor del negocio. |
+| **"offer_value"** | **Propuesta de Valor / Información de la Empresa** | El usuario busca respuestas relacionadas con la empresa: qué hace, dónde se originó, cómo funciona, su misión, o la propuesta de valor del negocio, cualquier duda que tenga sobre la empresa o los vehiculos que ofrece. Tambien puede preguntar sobre cualquier otro tema que no sea relacionado con la empresa o los vehiculos que ofrece. |
 | **"car_catalog"** | **Detalles / Características del Vehículo** | El usuario desea conocer cualquier tema relacionado con un vehículo específico o categoría: marca, modelo, año, detalles técnicos, características, etc., sin expresar una intención inmediata de compra. |
 | **"financial_plan"** | **Compra / Financiamiento / Adquisición** | El usuario está en la fase de adquisición o compra: busca un vehículo para comprar de forma inmediata, desea conocer planes de financiamiento, opciones de pago, o procesos de compra. Expresa una intención de compra o financiamiento o de conocer mas detalles del auto seleccionado. |
 
@@ -77,6 +77,7 @@ def intention_finder(state: MainOrchestratorState) -> SUB_AGENTS:
     ]
 
     response = orchestrator_agent.invoke(messages)
+    log.debug(f"Orchestrator agent flow indentified this intention: {response.content}")
     return response.content
 
 
@@ -90,11 +91,11 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
     """
     content = state["message_to_analyze"]
     response = programed_find(content)
-    print(f"response from programed_find: {response}")
+    log.debug(f"response from programed_find: {response}")
     if response == "nothing":
         # Remove return and store findings in a variable
         response = decide_by_model(content)
-    print(f"response from model: {response}")
+    log.debug(f"response from model: {response}")
     if response == "allow":
         return "wait_to_analyze"
     return "manage_unsecure"

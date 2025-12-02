@@ -19,5 +19,3 @@ class Configuration(BaseSettings):
     temperature: int = 0
     twilio_account_sid: str
     twilio_auth_token: str
-    twilio_phone_number: str
-    twilio_phone_number_to: str
