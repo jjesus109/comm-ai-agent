@@ -177,7 +177,7 @@ def continue_operation(state: MainOrchestratorState) -> dict:
 
 def manage_unsecure(state: MainOrchestratorState) -> dict:
     return {
-        "response": "Regresemos a nuestro tema principal",
+        "response": "Lo siento, no puedo responder a esa pregunta, solo puedo hablar sobre Kavak o sus productos.",
         "current_action": "manage_unsecure",
     }
 
