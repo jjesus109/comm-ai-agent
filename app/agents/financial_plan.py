@@ -30,6 +30,14 @@ financial_plan_agent = ChatGoogleGenerativeAI(
 
 
 def context_financial_identification(state: MainOrchestratorState) -> dict:
+    """
+    Extracts the financial plan details from the user message
+    and returns the financial plan details to the state.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: financial plan details to include in the state.
+    """
     SYSTEM_PROMPT = """
     Eres un experto en **Extracción de Información y Ventas de Automóviles**. Tu tarea es analizar la última intervención del cliente y ayudarle a definir sus necesidades de financiamiento.
     ### Contexto:
@@ -117,7 +125,11 @@ def context_financial_identification(state: MainOrchestratorState) -> dict:
 
 def financial_calculator(state: MainOrchestratorState) -> dict:
     """
-    This functions calculates the financial plan for a given car based on price, interest rate, months and down payment
+    Calculates the financial plan for a given car based on price, interest rate, months and down payment
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: financial plan details to include in the state.
     """
     months = float(state["years"]) * 12
     down_payment = float(state["down_payment"])
@@ -134,6 +146,13 @@ def financial_calculator(state: MainOrchestratorState) -> dict:
 
 
 def organize_response(state: MainOrchestratorState) -> dict:
+    """
+    Organizes the response to the user based on the financial plan details.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: response to the user to include in the state.
+    """
     selected_car = state["selected_car"]
     years = state["years"]
     down_payment = state["down_payment"]
@@ -169,6 +188,13 @@ def organize_response(state: MainOrchestratorState) -> dict:
 
 
 def select_car(state: MainOrchestratorState) -> dict:
+    """
+    Selects the car based on the car findings and the user message.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: selected car and current action to include in the state.
+    """
     if not state.get("car_findings"):
         return {
             "user_response": "No hemos buscado un auto todavia, por favor, dime alguna caracteristica del auto que deseas buscar.",
@@ -220,6 +246,14 @@ def select_car(state: MainOrchestratorState) -> dict:
 
 
 def router_node(state: MainOrchestratorState) -> SUB_NODES:
+    """
+    Decides the next action to take based on the current action and the user needs.
+    This node is used to decide the next action to take based on the current action and the user needs.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        SUB_NODES: The next action to take.
+    """
     current_action = state["current_action"]
     # To avoid infinite loop, if the current action is a sub node, return END
     if current_action in NODE_NAMES:
@@ -269,7 +303,14 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
 
 
 def entry_point(state: MainOrchestratorState) -> dict:
-    # Ask user to complete the missing information
+    """
+    Entry point of the financial plan graph.
+    This node is used to return the response to the user.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: response to the user to include in the state.
+    """
     response = state.get("user_response")
     return {"response": response}
 

@@ -53,6 +53,15 @@ orchestrator_agent = ChatGoogleGenerativeAI(
 
 
 def intention_finder(state: MainOrchestratorState) -> SUB_AGENTS:
+    """
+    Finds the intention of the user based on the summary of the conversation and the message to analyze.
+
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+
+    Returns:
+        SUB_AGENTS: The sub-agent node that can redirect the flow to.
+    """
     summary = state.get("summary", "")
     human_message = f"Este es el mensaje del usuario: {state['message_to_analyze']}"
 
@@ -77,7 +86,7 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
     Args:
         state (MainOrchestratorState): The state of the orchestrator.
     Returns:
-        str: The node to apply to the message.
+        str: The node to apply to the message next
     """
     content = state["message_to_analyze"]
     response = programed_find(content)
@@ -91,16 +100,16 @@ def verify_malicious_content(state: MainOrchestratorState) -> str:
     return "manage_unsecure"
 
 
-def programed_find(content):
+def programed_find(content: str) -> str:
     """
     Finds malicious content in a given message.
     Args:
-        content (str): The message to find malicious content in.
-    Returns:
+        content (str): The message to find malicious content in. Returns:
         str: One of the following actions:
             - "allow": The request is good and will pass.
-            - "deny": The request is not allowed.
+            - "deny": The request is not allowed and will be blocked.
             - "warn": Warn about the response by the user or LLM.
+            - "nothing": The request is not malicious and will be allowed.
     """
     # 1. Direct Injection
     # 1.1. Prompt Injection/Jailbreak detection
@@ -172,10 +181,26 @@ def programed_find(content):
 
 
 def continue_operation(state: MainOrchestratorState) -> dict:
+    """
+    Continues the operation of the orchestrator.
+    This node is used to continue the operation in case the message is secure or no needs
+    to be summarized the rest
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: elements to include in the state.
+    """
     return {"secure_input": True, "current_action": "continue_operation"}
 
 
 def manage_unsecure(state: MainOrchestratorState) -> dict:
+    """
+    Manages the unsecure message and response to the user.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: elements to include in the state.
+    """
     return {
         "response": "Lo siento, no puedo responder a esa pregunta, solo puedo hablar sobre Kavak o sus productos.",
         "current_action": "manage_unsecure",
@@ -183,7 +208,13 @@ def manage_unsecure(state: MainOrchestratorState) -> dict:
 
 
 def decide_by_model(message: str) -> str:
-    # If none of the above, request to agents to decide
+    """
+    Decides if the message is allowed or not by an LLM
+    Args:
+        message (str): The message to decide if is allowed or not.
+    Returns:
+        str: "allow" if the message is allowed, "deny" if the message is not allowed, "warn" if the message is suspicious.
+    """
     PROXY_PROMPT = f"""Tu debes ser un proxy responsable que valida si el mensaje es permitido o no, y no debes de hacer daño o modificar el mensaje.
     Debes de validar si el mensaje es permitido o no.
     Debes evaluar 4 escenarios:
@@ -207,18 +238,29 @@ def decide_by_model(message: str) -> str:
 
 
 def entry_point(state: MainOrchestratorState) -> dict:
-    # Analyze the last message
+    """
+    Entry point of the orchestrator.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: elements to include in the state.
+    """
     message = state["messages"][-1].content
     log.debug(f"message: {state['messages']}")
     log.debug(f"summary: {state.get('summary', '')}")
     return {"message_to_analyze": message, "current_action": "orchestrator"}
 
 
-def summarize_conversation(state: MainOrchestratorState):
+def summarize_conversation(state: MainOrchestratorState) -> dict:
+    """
+    Summarizes the conversation based on the
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: summary of the conversation include in the state.
+    """
     summary = state.get("summary", "")
     messages = state["messages"]
-    if len(messages) < RATE_SUMMARIZE_MESSAGES and not summary:
-        return {"summary": ""}
     if summary:
         summary_message = (
             f"Este es el resumen de la conversacion hasta el momento: {summary}\n\n"
@@ -251,6 +293,13 @@ def summarize_conversation(state: MainOrchestratorState):
 def should_summarize(
     state: MainOrchestratorState,
 ) -> Literal["summarize_conversation", "continue_operation"]:
+    """
+    Decides if the conversation should be summarized or not.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        Literal["summarize_conversation", "continue_operation"]: The node to apply to the message next.
+    """
     messages = state["messages"]
     if len(messages) > RATE_SUMMARIZE_MESSAGES:
         return "summarize_conversation"
@@ -258,6 +307,15 @@ def should_summarize(
 
 
 def wait_to_analyze(state: MainOrchestratorState) -> dict:
+    """
+    After malicious content node is applied,
+    if the content is benign, this node is applied to continue the operation.
+    And helps to analyze if the message should be summarized or not.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: current action to include in the state.
+    """
     return {"current_action": "wait_to_analyze"}
 
 
@@ -281,5 +339,4 @@ workflow.add_edge("car_catalog", END)
 workflow.add_edge("offer_value", END)
 workflow.add_edge("manage_unsecure", END)
 
-# Compile
 orchestrator_graph = workflow.compile(checkpointer=memory)

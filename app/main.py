@@ -32,19 +32,10 @@ app = FastAPI(
 )
 
 
-@app.middleware("http")
-async def custom_middleware(request: Request, call_next):
-    log.info(f"Incoming request: {request.method} {request.url}")
-    log.info(f"Form: {request.form()} and headers {request.headers}")
-    log.info(f"All request: {request}")
-    response = await call_next(request)
-
-    print(f"Outgoing response status: {response.status_code}")
-    return response
-
-
 @app.post("/api/chat/", responses=responses)
 async def send_messages(request: Request):
+    # Manage all logic for twilio requests, it could be in another service,
+    # but to simplyfy the code, we will keep it here.
     form_data = await request.form()
     message = form_data.get("Body", "")
     thread_id = form_data.get("WaId", "")
@@ -55,11 +46,15 @@ async def send_messages(request: Request):
     responses = orchestrator_graph.invoke({"messages": [input_message]}, config)
     final_response = responses["response"]
     log.info(f"final_response: {final_response}")
-    client.messages.create(
-        from_=to_number,
-        body=final_response,
-        to=from_number,
-    )
+    try:
+        client.messages.create(
+            from_=to_number,
+            body=final_response,
+            to=from_number,
+        )
+    except Exception as e:
+        log.error(f"Error sending message to twilio: {e}")
+        return {"status": "error"}
     return {"status": "ok"}
 
 

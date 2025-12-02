@@ -37,6 +37,13 @@ car_catalog_llm = ChatGoogleGenerativeAI(
 
 
 def context_car_identification(state: MainOrchestratorState) -> dict:
+    """
+    Extracts the car characteristics from the user message and returns the user needs.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: user needs to include in the state.
+    """
     SYSTEM_PROMPT = """
     Eres un experto en **Extracción de Características y Asesoría de Automóviles**. Tu tarea es analizar la última intervención del cliente para extraer sus requisitos específicos de búsqueda y, al finalizar, solicitarle cualquier otro requisito que no haya mencionado.
 
@@ -116,6 +123,13 @@ def context_car_identification(state: MainOrchestratorState) -> dict:
 
 
 def text_to_sql(state: MainOrchestratorState) -> dict:
+    """
+    Creates a SQL query to search for cars based on the user needs.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: SQL query to include in the state.
+    """
     if not state.get("user_needs"):
         return {"error": "No user needs found", "current_action": "text_to_sql"}
     user_needs = state["user_needs"]
@@ -175,12 +189,14 @@ def text_to_sql(state: MainOrchestratorState) -> dict:
     return {"query": clean_query, "current_action": "text_to_sql"}
 
 
-def dict_factory(cursor, row):
-    fields = [column[0] for column in cursor.description]
-    return {key: value for key, value in zip(fields, row)}
-
-
 def search_cars(state: MainOrchestratorState) -> dict:
+    """
+    Searches for cars based on the SQL query and returns the cars findings.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: cars findings to include in the state.
+    """
     if not state.get("query"):
         return {
             "user_response": "Primero, empezemos con definir algunas caracteristicas del auto que deseas buscar"
@@ -207,6 +223,13 @@ def search_cars(state: MainOrchestratorState) -> dict:
 
 
 def organize_response(state: MainOrchestratorState) -> dict:
+    """
+    Organizes the response to the user based on the cars findings.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: response to the user to include in the state.
+    """
     if not state.get("car_findings"):
         return {
             "error": "No cars found",
@@ -237,6 +260,13 @@ def organize_response(state: MainOrchestratorState) -> dict:
 
 
 def clear_car_context(state: MainOrchestratorState) -> dict:
+    """
+    Clears the car context to start a new search.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: elements to update as user_needs, current_action, user_response and messages in the state.
+    """
     return {
         "user_needs": {},
         "current_action": "clear_car_context",
@@ -250,6 +280,13 @@ def clear_car_context(state: MainOrchestratorState) -> dict:
 
 
 def router_node(state: MainOrchestratorState) -> SUB_NODES:
+    """
+    Decides the next action to take based on the current action and the user needs.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        SUB_NODES: The next action to take.
+    """
     current_action = state["current_action"]
     # To avoid infinite loop, if the current action is a sub node, return END
     if current_action in NODE_NAMES:
@@ -296,6 +333,10 @@ def orchestrator_node(state: MainOrchestratorState) -> dict:
     and respond to the user with the appropriate message.
     According to the user input, it will call the appropriate node to continue the flow.
     And returns the proper message to the user based on the user input.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: response to the user to include in the state.
     """
     response = state.get("user_response", "")
     return {"response": response}

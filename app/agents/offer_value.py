@@ -21,6 +21,13 @@ offer_value_agent = ChatGoogleGenerativeAI(
 
 
 def search_data(state: MainOrchestratorState) -> dict:
+    """
+    Searches the data from the company and returns the response to the user.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: response to the user to include in the state.
+    """
     question = state["message_to_analyze"]
 
     SYSTEM_PROMPT = f"""
@@ -79,6 +86,14 @@ def search_data(state: MainOrchestratorState) -> dict:
 
 
 def entry_point(state: MainOrchestratorState) -> dict:
+    """
+    Entry point of the offer value graph.
+    This node is used to return the response to the user.
+    Args:
+        state (MainOrchestratorState): The state of the orchestrator.
+    Returns:
+        dict: response to the user to include in the state.
+    """
     return {"current_action": "offer_value"}
 
 
