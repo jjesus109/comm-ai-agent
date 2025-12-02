@@ -13,3 +13,5 @@ def configure_logger() -> None:
 
     ch.setFormatter(formatter)
     logger.addHandler(ch)
+    logger = logging.getLogger("twilio.http_client")
+    logger.setLevel(logging.WARNING)

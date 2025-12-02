@@ -43,8 +43,12 @@ async def send_messages(request: Request):
     to_number = form_data.get("To", "")
     config = {"configurable": {"thread_id": thread_id}}
     input_message = HumanMessage(content=message)
-    responses = orchestrator_graph.invoke({"messages": [input_message]}, config)
-    final_response = responses["response"]
+    try:
+        responses = orchestrator_graph.invoke({"messages": [input_message]}, config)
+        final_response = responses["response"]
+    except Exception as e:
+        final_response = "Lo siento, no puedo procesar tu mensaje en este momento. Por favor, intenta nuevamente."
+        log.error(f"Error invoking orchestrator graph: {e}")
     log.info(f"final_response: {final_response}")
     try:
         client.messages.create(
