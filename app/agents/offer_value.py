@@ -63,13 +63,6 @@ def search_data(state: MainOrchestratorState) -> dict:
 
     ---
 
-    ### ⚙️ Proceso de Pensamiento (Cadena de Razonamiento - OBLIGATORIO):
-
-    * **Planificación (Paso OBLIGATORIO):** Antes de generar la respuesta final, genera un proceso de pensamiento detallado para determinar la estrategia. **Este proceso de pensamiento NO debe ser visible en la salida final.**
-        1.  **Clasificación de Intención:** ¿Es un saludo, una pregunta sobre Kavak, o un tema no relacionado?
-        2.  **Aplicación de Prioridad:** Aplica la regla de Prioridad 1, 2 o 3.
-        3.  **Síntesis:** Combina y simplifica los fragmentos encontrados (si aplica) o genera la frase de saludo/rechazo.
-
     ### 📝 REGLAS DE SALIDA:
 
     1.  **Fidelidad a la Fuente:** No inventes ninguna información.
