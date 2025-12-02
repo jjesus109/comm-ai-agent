@@ -38,6 +38,11 @@ def context_financial_identification(state: MainOrchestratorState) -> dict:
     Returns:
         dict: financial plan details to include in the state.
     """
+    if not state.get("selected_car"):
+        return {
+            "user_response": "No hemos seleccionado un auto todavia, por favor, dime alguna caracteristica del auto que deseas buscar.",
+            "current_action": "context_financial_identification",
+        }
     SYSTEM_PROMPT = """
     Eres un experto en **Extracción de Información y Ventas de Automóviles**. Tu tarea es analizar la última intervención del cliente y ayudarle a definir sus necesidades de financiamiento.
     ### Contexto:
