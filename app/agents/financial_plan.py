@@ -154,32 +154,65 @@ def organize_response(state: MainOrchestratorState) -> dict:
         dict: response to the user to include in the state.
     """
     selected_car = state["selected_car"]
+    selected_car_brand = selected_car["brand"]
+    selected_car_model = selected_car["model"]
+    selected_car_year = selected_car["year"]
+    selected_car_price = selected_car["price"]
     years = state["years"]
     down_payment = state["down_payment"]
     monthly_payment = state["monthly_payment"]
     value_to_finance = state["selected_car"]["price"]
     SYSTEM_PROMPT = f"""
-    Eres un experto vendedor de autos, crea una respuesta muy atractiva y llamativa para el usuario, que incluya los datos del auto seleccionado, el plazo de financiamiento, el pago mensual y el valor a financiar.
-    No inventes ninguna informacion.
-    No respondas preguntas que no sean relacionadas con el financiamiento de un auto.
-    Planifica y luego responde a la pregunta.
-    Responde de una manera corta, concisa, gentil y clara.
-    Ejemplo de output:
-    "El auto {selected_car["brand"]} {selected_car["model"]} {selected_car["year"]} cuesta {selected_car["price"]} pesos, puedes financiarlo en {years} años con un pago mensual de {monthly_payment} pesos, y el valor a financiar es de {value_to_finance} pesos."
+    ## 📝 Tarea: Generador de Confirmación de Financiamiento (Optimizado para WhatsApp)
+
+    Eres un **Vendedor Experto en Vehículos y Asesor Financiero**. Tu objetivo es presentar al usuario el resumen de su plan de financiamiento en un formato **claro, atractivo y profesional**, ideal para ser leído en WhatsApp, confirmando el auto seleccionado y el desglose financiero.
+
+    ### 📋 Contexto y Datos de Entrada (Asume que estos están formateados con la moneda local):
+    * **Detalles del Auto:** {selected_car} (Debe incluir Marca, Modelo, Año, Precio base)
+    * **Plazo de Financiamiento:** {years}
+    * **Enganche (Down Payment):** {down_payment}
+    * **Pago Mensual:** {monthly_payment}
+    * **Valor Total a Financiar:** {value_to_finance}
+
+    ### 🎯 Estructura y Tono (WhatsApp Ready):
+
+    1.  **Apertura Entusiasta:** Inicia con una felicitación y un tono de celebración.
+    2.  **Validación del Vehículo:** Confirma claramente el vehículo que el usuario ha elegido.
+    3.  **Desglose Financiero:** Presenta los datos clave del financiamiento en una lista clara, usando negritas y emojis.
+    4.  **Cierre y CTA:** Concluye con una llamada a la acción clara.
+
+    ### 🛑 Restricciones y Reglas:
+
+    1.  **Fidelidad de Datos:** **NO inventes** ninguna cifra. Usa estrictamente los placeholders provistos.
+    2.  **Tono:** Responde de una manera corta, concisa, gentil y clara.
+    3.  **Output OBLIGATORIO:** Genera **únicamente la respuesta final en el formato estructurado a continuación**, sin prefijos, explicaciones o código adicional.
+
+    ---
+
+    ### 📝 Formato de Salida Requerido:
+
+    Tu respuesta final debe seguir esta estructura optimizada para móvil:
+
+    ```markdown
+    ¡Felicidades! 🎉 ¡Tu plan de financiamiento está listo!
+
+    Has tomado una excelente decisión. Te confirmo los detalles:
+
+    🚗 **Tu Auto Seleccionado:**
+    * **{selected_car_brand} {selected_car_model} {selected_car_year}**
+    * Precio Total: **{selected_car_price}**
+
+    Aquí está el resumen de tu cotización:
+
+    ✨ **DESGLOSE DEL PLAN**
+    * 💰 Enganche Inicial: **{down_payment}**
+    * 🗓️ Plazo Total: **{years} años**
+    * 💵 Valor a Financiar: **${value_to_finance:,.2f}**
+    * 💳 Tu Pago Mensual Estimado: **${monthly_payment:,.2f}**
+
+    ¡Este plan hace que sea muy sencillo estrenar!
     """
-    USER_PROMPT = f"""Estos son los datos que usaras para crear la respuesta:
-    * Auto: {selected_car}
-    * Años de financiamiento: {years}
-    * Pago inicial: {down_payment}
-    * Pago mensual: {monthly_payment}
-    * Valor a financiar: {value_to_finance}
-    * Tasa de interes: {ANNUAL_RATE}
-    """
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=USER_PROMPT),
-    ]
-    response = financial_plan_agent.invoke(messages)
+    response = financial_plan_agent.invoke(SYSTEM_PROMPT)
     return {
         "response": response.content,
         "current_action": "organize_response",

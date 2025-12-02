@@ -34,7 +34,7 @@ Selecciona una, y solo una, de las siguientes claves. **Tu respuesta debe ser ú
 | :--- | :--- | :--- |
 | **"offer_value"** | **Propuesta de Valor / Información de la Empresa** | El usuario busca respuestas relacionadas con la empresa: qué hace, dónde se originó, cómo funciona, su misión, o la propuesta de valor del negocio. |
 | **"car_catalog"** | **Detalles / Características del Vehículo** | El usuario desea conocer cualquier tema relacionado con un vehículo específico o categoría: marca, modelo, año, detalles técnicos, características, etc., sin expresar una intención inmediata de compra. |
-| **"financial_plan"** | **Compra / Financiamiento / Adquisición** | El usuario está en la fase de adquisición o compra: busca un vehículo para comprar de forma inmediata, desea conocer planes de financiamiento, opciones de pago, o procesos de compra. |
+| **"financial_plan"** | **Compra / Financiamiento / Adquisición** | El usuario está en la fase de adquisición o compra: busca un vehículo para comprar de forma inmediata, desea conocer planes de financiamiento, opciones de pago, o procesos de compra. Expresa una intención de compra o financiamiento o de conocer mas detalles del auto seleccionado. |
 
 ---
 

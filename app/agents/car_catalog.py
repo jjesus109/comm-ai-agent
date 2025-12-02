@@ -237,24 +237,70 @@ def organize_response(state: MainOrchestratorState) -> dict:
         }
     car_findings = state["car_findings"]
     SYSTEM_PROMPT = """
-    Eres un vendedor experto en autos, crea una resumen muy llamativo y atractivo para el usuario, que incluya los autos encontrados y el match de las necesidades del usuario con los autos encontrados.
-    basado en los hallazagos encontrados por tu asistente de busqueda, recuerda, debes crear un mensaje muy atractivo y llamativo para el usuario, que incluya los autos encontrados y el match de las necesidades del usuario con los autos encontrados.
-    Recuerda incluir los datos de los autos encontrados, como marca, modelo, año, precio, kilometraje, etc, y toda la infomracion relevante de los autos a ofrecer al cliente.
-    Limita la respuesta a 3 autos encontrados.
-    En caso de que no haya autos encontrados, responde con un mensaje de que no se encontraron autos que se ajusten a las necesidades del usuario.
-    Recuerda que debes mostrar al usuario las caracteristicas que definio de una manera amigable y clara.
-    Estas son las caracteristicas que busco el usuario: {user_needs}
-    Ejemplo de output:
-    "Estos son los autos encontrados: 'Lista de autos encontrados'"
-    "No se encontraron autos que se ajusten a tus necesidades, prueba modificando las caracteristicas del auto que deseas buscar"
-    
-    """
-    USER_PROMPT = f"Estos son los autos encontrados: {car_findings}"
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT.format(user_needs=state.get("user_needs"))),
-        HumanMessage(content=USER_PROMPT),
-    ]
-    response = car_catalog_llm.invoke(messages)
+    ## 📝 Tarea: Generador de Resumen de Venta Persuasivo para WhatsApp
+
+    Eres un **Vendedor Experto en Vehículos Usados** con un tono altamente **persuasivo, entusiasta y optimista**. 
+    Tu objetivo es convertir los resultados de la búsqueda en un mensaje de venta irresistible, optimizado para ser leído en WhatsApp, destacando cómo nuestros autos resuelven las necesidades del cliente.
+
+    ### 📋 Contexto y Entrada:
+    * **Necesidades del Usuario:** {user_needs}
+    * **Resultados de Búsqueda:** {search_results} (Contiene datos brutos de los vehículos: marca, modelo, año, precio, KM, características, etc.)
+
+    ### 🎯 Reglas de Estructura y Contenido:
+
+    1.  **Validación Inicial:** Comienza el mensaje con un saludo entusiasta y un reconocimiento claro de las necesidades del usuario.
+    2.  **Límite Estricto:** Muestra un **MÁXIMO de 3 vehículos** que mejor se ajustan a las necesidades.
+    3.  **El Match de Venta:** Por cada vehículo listado, debes generar una frase persuasiva que explique **por qué ese auto específico es la mejor opción** basándose en las `{user_needs}`.
+    4.  **Información Esencial:** Incluye de forma clara: Marca, Modelo, Año, **Precio**, Kilometraje (KM) y 1-2 características clave extra.
+
+    ### 📲 Optimización para WhatsApp/Móvil (Formato Clave):
+
+    * Utiliza **negritas** (`**`) y **emojis relevantes (✨, 🎯, 💰, 🗓️, 🛣️)** para captar la atención.
+    * Mantén los párrafos **cortos** y usa saltos de línea para facilitar la lectura.
+    * El mensaje debe terminar con una clara **llamada a la acción** (CTA).
+
+    ### 🚨 Manejo de Cero Resultados:
+
+    * Si la lista de `{search_results}` está vacía o contiene un mensaje de "no encontrado", genera un mensaje amable y proactivo. Responde invitando al usuario a **modificar las características** .
+
+    ### 📝 Formato de Salida Requerido:
+
+    Tu respuesta debe ser un mensaje de venta completo y atractivo.
+
+    **EJEMPLO DE OUTPUT ESPERADO (Para el caso exitoso):**
+    ¡Hola! 🤩 He encontrado verdaderas joyas que cumplen tus criterios. . ¡Mira estas 3 opciones que te van a encantar!
+
+    ✨ Opción 1: [Marca y Modelo] [Año]
+
+    ¡El match! Cumple con tu requisito de [Menciona la característica clave].
+
+    💰 Precio: [Precio]
+
+    🗓️ Año: [Año]
+
+    🛣️ Kilometraje: [KM] km
+
+    ✨ Opción 2: [Marca y Modelo] [Año]
+
+    ¡El match! Es perfecto por su [Menciona la característica clave].
+
+    💰 Precio: [Precio]
+
+    🗓️ Año: [Año]
+
+    🛣️ Kilometraje: [KM] km
+
+    ¿Te gustaría que te muestre las opciones de financiamiento? ¡Dime cuál te llama más la atención! 👇
+
+
+    **EJEMPLO DE OUTPUT ESPERADO (Para el caso de no resultados):**
+    ¡Hola! 👋 Revisé los criterios que me diste, pero lamentablemente no encontramos coincidencias exactas en nuestro stock actual. 🥺 Recuerda que buscaste: {user_needs}. Para ayudarte mejor, ¿podrías modificar alguna de las características, como el precio máximo o el año? ¡Estoy seguro de que podemos encontrar algo increíble para ti!
+        """
+    response = car_catalog_llm.invoke(
+        SYSTEM_PROMPT.format(
+            user_needs=state.get("user_needs"), search_results=car_findings
+        )
+    )
     log.debug(f"Este es el resumen de los autos encontrados: {response.content}")
     return {"user_response": response.content, "messages": [response]}
 
@@ -303,13 +349,12 @@ def router_node(state: MainOrchestratorState) -> SUB_NODES:
 
     ### 💡 INSTRUCCIONES CLAVE Y REQUISITOS:
     1.  **Analiza la Intención:** Clasifica el nuevo mensaje del usuario en una de las cuatro categorías definidas.
-    2.  **Respuesta OBLIGATORIA:** Responde **únicamente** con el nombre de la acción (e.g., "select_car"). No incluyas explicaciones, encabezados, o texto adicional.
+    2.  **Respuesta OBLIGATORIA:** Responde **únicamente** con el nombre de la acción (e.g., "context_car_identification"). No incluyas explicaciones, encabezados, o texto adicional.
 
     ### ⚙️ POSIBLES ACCIONES (ESCOGE SÓLO UNA):
 
     | Acción | Definición y Lógica | Ejemplos de Entrada |
     | :--- | :--- | :--- |
-    | **"select_car"** | El usuario ha **elegido un vehículo específico** (por marca, modelo y/o año) con la intención de **obtener detalles adicionales, iniciar cotización/financiamiento, o reservarlo**. | "Me gusta la Chevrolet Cheyenne 2019", "Quiero el Toyota 2018", "Me interesa el audio a3 2010", "Dame más detalles de ese Mercedes Benz c200 2021". |
     | **"context_car_identification"** | El usuario está **definiendo, agregando o modificando criterios de búsqueda** (filtros, rangos, características). El sistema debe actualizar el contexto de búsqueda con esta información (incluso si la lista de características actual está vacía). | "Quiero un auto de la marca Toyota","Un mercedez","una rav4" , "un mustang","Debe ser modelo Corolla, año 2024", "Que tenga bluetooth y CarPlay", "Busco un sedan más barato que 200,000 pesos". |
     | **"text_to_sql"** | El usuario solicita **ejecutar la búsqueda actual** (basada en el contexto existente) y **ver los resultados** encontrados por el sistema. | "Quiero ver los resultados de la busqueda de vehiculos", "Muestra que autos encontraste", "¿Qué opciones tienes?", "A ver que autos encontraste", "Que vehiculos tienes con esas caracteristicas". |
     | **"clear_car_context"** | El usuario pide **borrar** la búsqueda actual y **comenzar de cero** con un nuevo set de filtros. | "Quiero buscar un nuevo vehiculo", "Probemos con otras caracteristicas", "Borra mi búsqueda actual", "Empecemos de nuevo". |
