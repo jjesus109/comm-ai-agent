@@ -1,14 +1,12 @@
 import logging
-from uuid import uuid4
 
-from fastapi import FastAPI, Request
+
 import uvicorn
 from twilio.rest import Client
-from langchain_core.messages import HumanMessage
-
-from app.models import ResponseModel
-from app.utils import configure_logger
+from fastapi import FastAPI, Request
 from app.config import Configuration
+from app.utils import configure_logger
+from langchain_core.messages import HumanMessage
 from app.agents.orchestrator import orchestrator_graph
 
 
@@ -34,29 +32,19 @@ app = FastAPI(
 )
 
 
-@app.post("/message")
-async def reply(request: Request):
-    body_text = "Hi, from fast api!"
-    try:
-        form_data = await request.form()
-        message_body = form_data.get("Body", "")
-        log.info(f"Received message: '{message_body}' from data: {form_data}")
-        client.messages.create(
-            from_=f"whatsapp:+{conf.twilio_phone_number}",
-            body=body_text,
-            to=f"whatsapp:+{conf.twilio_phone_number_to}",
-        )
-        return {"status": "ok"}
-    except Exception as e:
-        log.info(f"Error receiving message: {e}")
-        return ResponseModel(
-            response="Error receiving message", conversation_id=uuid4()
-        )
+@app.middleware("http")
+async def custom_middleware(request: Request, call_next):
+    log.info(f"Incoming request: {request.method} {request.url}")
+    log.info(f"Form: {request.form()} and headers {request.headers}")
+    log.info(f"All request: {request}")
+    response = await call_next(request)
+
+    print(f"Outgoing response status: {response.status_code}")
+    return response
 
 
 @app.post("/api/chat/", responses=responses)
 async def send_messages(request: Request):
-    # Create a thread
     form_data = await request.form()
     message = form_data.get("Body", "")
     thread_id = form_data.get("WaId", "")
