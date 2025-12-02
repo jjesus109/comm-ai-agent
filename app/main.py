@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import Configuration
 from app.utils import configure_logger, generate_correlation_id, set_correlation_id
 from langchain_core.messages import HumanMessage
-from app.agents.orchestrator import orchestrator_graph
+from app.agents.graph_definition import orchestrator_graph
 
 
 conf = Configuration()

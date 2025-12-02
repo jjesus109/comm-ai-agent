@@ -3,21 +3,13 @@ import re
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, RemoveMessage, SystemMessage
-from langgraph.graph import StateGraph, START
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import END
-from langgraph.checkpoint.postgres import PostgresSaver
+
 
 from app.config import Configuration
 from app.agents.models import MainOrchestratorState
-from app.depends import agents_db_conn
-from app.agents.offer_value import offer_value_graph
-from app.agents.car_catalog import car_catalog_graph
-from app.agents.financial_plan import financial_plan_graph
 
 
-memory = PostgresSaver(agents_db_conn)
-memory.setup()
 log = logging.getLogger(__name__)
 conf = Configuration()
 
@@ -318,26 +310,3 @@ def wait_to_analyze(state: MainOrchestratorState) -> dict:
         dict: current action to include in the state.
     """
     return {"current_action": "wait_to_analyze"}
-
-
-workflow = StateGraph(MainOrchestratorState)
-workflow.add_node(entry_point)
-workflow.add_node(manage_unsecure)
-workflow.add_node(summarize_conversation)
-workflow.add_node("financial_plan", financial_plan_graph.compile(checkpointer=memory))
-workflow.add_node("offer_value", offer_value_graph.compile(checkpointer=memory))
-workflow.add_node("car_catalog", car_catalog_graph.compile(checkpointer=memory))
-workflow.add_node(continue_operation)
-workflow.add_node(wait_to_analyze)
-
-workflow.add_edge(START, "entry_point")
-workflow.add_conditional_edges("entry_point", verify_malicious_content)
-workflow.add_conditional_edges("wait_to_analyze", should_summarize)
-workflow.add_conditional_edges("continue_operation", intention_finder)
-workflow.add_edge("summarize_conversation", "continue_operation")
-workflow.add_edge("financial_plan", END)
-workflow.add_edge("car_catalog", END)
-workflow.add_edge("offer_value", END)
-workflow.add_edge("manage_unsecure", END)
-
-orchestrator_graph = workflow.compile(checkpointer=memory)
